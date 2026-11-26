@@ -30,12 +30,11 @@ import {
   MessageSquarePlus,
   Edit3,
   Camera,
-  Clock,
   Flame,
   PlusCircle,
   FolderOpen
 } from 'lucide-react';
-import { predictFraudWithML } from './mlFraudEngine';
+import { predictFraudWithML } from './MLFraudEngine';
 
 // 1. OFFICIAL INDIAN CYBER & DATA SECURITY PORTALS DIRECTORY
 const NATIONAL_CYBER_PORTALS = [
@@ -130,6 +129,16 @@ const NATIONAL_CYBER_PORTALS = [
     url: 'https://i4c.mha.gov.in',
     displayUrl: 'i4c.mha.gov.in'
   }
+];
+
+const PORTAL_AUDIENCES = [
+  'ALL',
+  'Everyday Citizens',
+  'Mobile Users',
+  'IT Admins & Businesses',
+  'Critical Industries',
+  'Government & Police',
+  'Law Enforcement'
 ];
 
 // 2. BASE TRENDING SCAMS DATABASE
@@ -240,7 +249,7 @@ const BASE_TRENDING_SCAMS = [
   }
 ];
 
-// Fraud Categories for Citizen Reports & AI Auto-Trending Engine
+// Fraud Categories for Citizen Reports & Pattern Monitor
 const COMPLAINT_CATEGORIES = [
   {
     name: 'Fake Traffic E-Challan & RTO APK Scam',
@@ -419,6 +428,31 @@ const SPAM_CALLER_PREFIXES = [
   }
 ];
 
+const QUICK_DEMO_SAMPLES = [
+  {
+    label: '✅ Valid Mobile (9876140321)',
+    value: '9876140321',
+    style: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+  },
+  {
+    label: '⚠️ Promo Spam SMS',
+    value:
+      'Hurry! Limited time offer: Flat 60% OFF sale ends tonight! Use code SAVE60 to shop now. T&C apply.',
+    style: 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+  },
+  {
+    label: '🚫 Spoofed Caller (111-11-1111)',
+    value: '111-11-1111',
+    style: 'bg-red-50 hover:bg-red-100 text-red-800 border-red-300'
+  },
+  {
+    label: '🚨 Bank KYC Phishing SMS',
+    value:
+      'URGENT: Your SBI PAN KYC has expired and your bank account will be blocked tonight. Update now: bit.ly/sbi-kyc-verify',
+    style: 'bg-red-50 hover:bg-red-100 text-red-800 border-red-300'
+  }
+];
+
 const TEN_YEAR_FRAUD_DATA = [
   {
     year: '2017',
@@ -585,7 +619,7 @@ const TEN_YEAR_FRAUD_DATA = [
     topIntlOrigins: '+855 (Cambodia), +92 (Pakistan), Spoofed +91 CLI',
     majorTrend: 'AI Voice Cloning "Relative in Hospital" Calls & Malicious .APK Files on WhatsApp',
     elaboratedStory:
-      'Scammers used 3-second AI voice clones to mimic a crying son or daughter in a police station or hospital accident. Simultaneously, fake traffic E-Challan and wedding invitation `.APK` files were sent on WhatsApp to hijack SMS OTPs.',
+      'Scammers used 3-second AI voice clones to mimic a crying son or daughter in a police station or hospital accident. Simultaneously, fake traffic E-Challan and wedding invitation .APK files were sent on WhatsApp to hijack SMS OTPs.',
     callerTactic:
       'Real-time AI voice modulators combined with Caller ID spoofing created panic so parents transferred money before verifying.',
     topTarget: 'Parents, elderly family members & smartphone users',
@@ -618,7 +652,6 @@ const CATEGORY_BREAKDOWN = [
     label: 'Domestic Scam Calls (Fake Bank/KYC, Customer Care & IVR Calls)',
     amountCr: 10160,
     percentage: 21.5,
-    color: '#ef4444',
     badgeBg: 'bg-red-500',
     icon: '📞'
   },
@@ -627,8 +660,7 @@ const CATEGORY_BREAKDOWN = [
     label: 'International Callers (+92, +855, +84 VoIP & "Digital Arrest" Calls)',
     amountCr: 6665,
     percentage: 14.2,
-    color: '#ea580c',
-    badgeBg: 'bg-orange-600',
+    badgeBg: 'bg-orange-500',
     icon: '🌍'
   },
   {
@@ -636,7 +668,6 @@ const CATEGORY_BREAKDOWN = [
     label: 'Spam SMS, Phishing Links & Malicious .APK Apps',
     amountCr: 11340,
     percentage: 24.1,
-    color: '#f59e0b',
     badgeBg: 'bg-amber-500',
     icon: '📩'
   },
@@ -645,7 +676,6 @@ const CATEGORY_BREAKDOWN = [
     label: 'UPI PIN Traps, Fake QR Scans & Telegram Investment Scams',
     amountCr: 18980,
     percentage: 40.2,
-    color: '#3b82f6',
     badgeBg: 'bg-blue-500',
     icon: '📱'
   }
@@ -653,7 +683,7 @@ const CATEGORY_BREAKDOWN = [
 
 const DIAGNOSTIC_FLOW = {
   root: {
-    text: 'Namaste! 🙏 I am your interactive CyberKavach Case Investigator.\n\nTo give you exact help, please tell me: **What happened to you just now?** (Or click an option below)',
+    text: 'Namaste! 🙏 I am your interactive CyberKavach Case Investigator.\n\nTo give you exact help, please tell me: What happened to you just now? (Or click an option below)',
     options: [
       { label: '💸 Money was deducted from my Bank / UPI', nextNode: 'money_lost_time' },
       { label: '📞 Got a suspicious Call / "Digital Arrest" threat', nextNode: 'call_type' },
@@ -662,28 +692,28 @@ const DIAGNOSTIC_FLOW = {
     ]
   },
   money_lost_time: {
-    text: '🚨 I understand money was deducted. Let us act fast!\n\n**Question 1 of 2:** How long ago did this transaction happen?',
+    text: '🚨 I understand money was deducted. Let us act fast!\n\nQuestion 1 of 2: How long ago did this transaction happen?',
     options: [
       { label: '⏱️ Less than 2 hours ago (Golden Hour)', nextNode: 'money_golden_hour' },
       { label: '📅 More than 2 hours ago / Yesterday', nextNode: 'money_later' }
     ]
   },
   money_golden_hour: {
-    text: '⚡ **CRITICAL GOLDEN HOUR!** Because it happened recently, police can freeze the money before the scammer withdraws it.\n\n**Question 2 of 2:** How was the money taken?',
+    text: '⚡ CRITICAL GOLDEN HOUR! Because it happened recently, police can freeze the money before the scammer withdraws it.\n\nQuestion 2 of 2: How was the money taken?',
     options: [
       { label: '📲 Via UPI (GPay / PhonePe / Paytm)', nextNode: 'verdict_upi_freeze' },
       { label: '💳 Via Debit/Credit Card or NetBanking OTP', nextNode: 'verdict_card_freeze' }
     ]
   },
   money_later: {
-    text: '📌 Even if some time has passed, we must put a freeze on the scammer’s bank account.\n\n**Question 2 of 2:** Do you have the 12-digit UTR / Transaction Reference Number from your SMS or bank app?',
+    text: '📌 Even if some time has passed, we must put a freeze on the scammer’s bank account.\n\nQuestion 2 of 2: Do you have the 12-digit UTR / Transaction Reference Number from your SMS or bank app?',
     options: [
       { label: '✅ Yes, I have the UTR / Reference ID', nextNode: 'verdict_file_portal' },
       { label: '❌ No, I cannot find it', nextNode: 'verdict_get_statement' }
     ]
   },
   call_type: {
-    text: '🔍 Let me investigate the caller.\n\n**Question 1 of 2:** What kind of number or call was it?',
+    text: '🔍 Let me investigate the caller.\n\nQuestion 1 of 2: What kind of number or call was it?',
     options: [
       { label: '🌍 Foreign number (+92, +855, +84, +234)', nextNode: 'call_intl_action' },
       { label: '👮 Caller claimed to be Police / CBI / Customs / FedEx', nextNode: 'call_digital_arrest' },
@@ -691,78 +721,78 @@ const DIAGNOSTIC_FLOW = {
     ]
   },
   call_intl_action: {
-    text: '🌍 That is a cross-border VoIP scam call.\n\n**Question 2 of 2:** Did you answer a WhatsApp video call or share any money/details with them?',
+    text: '🌍 That is a cross-border VoIP scam call.\n\nQuestion 2 of 2: Did you answer a WhatsApp video call or share any money/details with them?',
     options: [
       { label: '📹 Yes, I answered a video call / shared info', nextNode: 'blackmail_check' },
       { label: '🛡️ No, I disconnected or ignored it', nextNode: 'verdict_safe_block' }
     ]
   },
   call_digital_arrest: {
-    text: '👮‍♂️ **WARNING: That is a 100% FAKE "Digital Arrest" scam!** Real police NEVER call on WhatsApp video.\n\n**Question 2 of 2:** Are they still asking you to stay on the call or transfer money?',
+    text: '👮‍♂️ WARNING: That is a 100% FAKE "Digital Arrest" scam! Real police NEVER call on WhatsApp video.\n\nQuestion 2 of 2: Are they still asking you to stay on the call or transfer money?',
     options: [
       { label: '⚠️ Yes, they are pressuring me right now', nextNode: 'verdict_hangup_now' },
       { label: '💸 I already transferred money to them', nextNode: 'money_lost_time' }
     ]
   },
   call_kyc_shared: {
-    text: '🔑 **Question 2 of 2:** Did you tell them any OTP, UPI PIN, or install a screen-sharing app (like AnyDesk)?',
+    text: '🔑 Question 2 of 2: Did you tell them any OTP, UPI PIN, or install a screen-sharing app (like AnyDesk)?',
     options: [
       { label: '😱 Yes, I shared OTP or screen access', nextNode: 'apk_installed' },
       { label: '✅ No, I did not share anything', nextNode: 'verdict_safe_block' }
     ]
   },
   apk_installed: {
-    text: '☣️ **MALWARE ALERT!** If you installed an `.APK` file or screen-sharing app, the scammer can read your SMS OTPs.\n\n**Question:** Is your phone currently connected to the Internet (Wi-Fi or Mobile Data)?',
+    text: '☣️ MALWARE ALERT! If you installed an .APK file or screen-sharing app, the scammer can read your SMS OTPs.\n\nQuestion: Is your phone currently connected to the Internet (Wi-Fi or Mobile Data)?',
     options: [
       { label: '📶 Yes, Internet is ON right now', nextNode: 'verdict_airplane_mode' },
       { label: '✈️ I already turned OFF Internet / Uninstalled it', nextNode: 'verdict_reset_bank' }
     ]
   },
   blackmail_check: {
-    text: '🛡️ Stay calm—you are the victim, and the law protects you.\n\n**Question:** Have you paid any money to the blackmailer yet?',
+    text: '🛡️ Stay calm—you are the victim, and the law protects you.\n\nQuestion: Have you paid any money to the blackmailer yet?',
     options: [
       { label: '❌ No, I have not paid anything', nextNode: 'verdict_blackmail_dont_pay' },
       { label: '💸 Yes, I paid once and they want more', nextNode: 'verdict_blackmail_paid' }
     ]
   },
   verdict_upi_freeze: {
-    text: '✅ **YOUR PERSONALIZED ACTION PLAN (UPI FRAUD):**\n1. **Dial 1930 right now** and give them the 12-digit UPI Transaction ID.\n2. Open your UPI app (GPay/PhonePe) → tap the transaction → click **"Report an Issue / Fraud"**.\n3. Log in to **https://cybercrime.gov.in** under "Report Financial Fraud" so the National Cyber Crime Portal freezes the receiver’s bank account.\n\nWould you like to investigate another issue?',
+    text: '✅ YOUR PERSONALIZED ACTION PLAN (UPI FRAUD):\n1. Dial 1930 right now and give them the 12-digit UPI Transaction ID.\n2. Open your UPI app (GPay/PhonePe) → tap the transaction → click "Report an Issue / Fraud".\n3. Log in to https://cybercrime.gov.in under "Report Financial Fraud" so the National Cyber Crime Portal freezes the receiver’s bank account.\n\nWould you like to investigate another issue?',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_card_freeze: {
-    text: '✅ **YOUR PERSONALIZED ACTION PLAN (CARD / BANK FRAUD):**\n1. **Immediately block your Card / NetBanking** via your bank’s mobile app or toll-free helpline.\n2. **Call 1930** within the next 10 minutes—tell the officer the exact time and amount deducted.\n3. Keep the bank SMS showing the debit alert; you will need to upload its screenshot at **https://cybercrime.gov.in**.',
+    text: '✅ YOUR PERSONALIZED ACTION PLAN (CARD / BANK FRAUD):\n1. Immediately block your Card / NetBanking via your bank’s mobile app or toll-free helpline.\n2. Call 1930 within the next 10 minutes—tell the officer the exact time and amount deducted.\n3. Keep the bank SMS showing the debit alert; you will need to upload its screenshot at https://cybercrime.gov.in.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_file_portal: {
-    text: '✅ **YOUR PERSONALIZED ACTION PLAN (WITH UTR NUMBER):**\n1. Call **1930** and read out your **12-digit UTR number** so a hold is placed on the destination bank account.\n2. Visit **https://cybercrime.gov.in**, click **"File a Complaint"**, and attach your bank statement + UTR screenshot.\n3. Take the acknowledgement number to your nearest bank branch to submit a formal dispute form.',
+    text: '✅ YOUR PERSONALIZED ACTION PLAN (WITH UTR NUMBER):\n1. Call 1930 and read out your 12-digit UTR number so a hold is placed on the destination bank account.\n2. Visit https://cybercrime.gov.in, click "File a Complaint", and attach your bank statement + UTR screenshot.\n3. Take the acknowledgement number to your nearest bank branch to submit a formal dispute form.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_get_statement: {
-    text: '✅ **HOW TO GET YOUR TRANSACTION ID FAST:**\n1. Check your bank SMS or open your UPI app’s **History** tab—look for a 12-digit number labeled **UTR / Ref No.**\n2. Even without the UTR, **dial 1930 immediately** and tell them your registered mobile number and exact time of debit.\n3. Call your bank’s customer care to freeze your account against further debits.',
+    text: '✅ HOW TO GET YOUR TRANSACTION ID FAST:\n1. Check your bank SMS or open your UPI app’s History tab—look for a 12-digit number labeled UTR / Ref No.\n2. Even without the UTR, dial 1930 immediately and tell them your registered mobile number and exact time of debit.\n3. Call your bank’s customer care to freeze your account against further debits.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_safe_block: {
-    text: '🎉 **GREAT JOB! YOU ARE SAFE.**\nSince you did not share any OTP/PIN or answer a video call, your money is safe.\n\n**Next Steps to Protect Others:**\n1. Block the number on your phone and WhatsApp.\n2. Report the scam number on the government’s **Chakshu Portal** (**https://sancharsaathi.gov.in**) so the DoT disconnects the scammer’s SIM card!',
+    text: '🎉 GREAT JOB! YOU ARE SAFE.\nSince you did not share any OTP/PIN or answer a video call, your money is safe.\n\nNext Steps to Protect Others:\n1. Block the number on your phone and WhatsApp.\n2. Report the scam number on the government’s Chakshu Portal (https://sancharsaathi.gov.in) so the DoT disconnects the scammer’s SIM card!',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_hangup_now: {
-    text: '🛑 **DISCONNECT THE CALL IMMEDIATELY!**\n1. Cut the WhatsApp/Skype call right now—no real police officer ever conducts "Digital Arrest".\n2. Do NOT transfer a single rupee.\n3. Dial **1930** or visit your local police station if you want peace of mind—they will confirm it is a fake scam call.',
+    text: '🛑 DISCONNECT THE CALL IMMEDIATELY!\n1. Cut the WhatsApp/Skype call right now—no real police officer ever conducts "Digital Arrest".\n2. Do NOT transfer a single rupee.\n3. Dial 1930 or visit your local police station if you want peace of mind—they will confirm it is a fake scam call.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_airplane_mode: {
-    text: '✈️ **EMERGENCY STEP: TURN ON AIRPLANE MODE NOW!**\n1. Switch ON **Airplane Mode** (or turn OFF Wi-Fi & Mobile Data) immediately—this cuts off the hacker’s live access to your SMS OTPs.\n2. Go to **Settings → Apps** and uninstall the unknown `.APK` or AnyDesk app.\n3. Using another safe phone, call your bank to temporarily block mobile banking and change your passwords.',
+    text: '✈️ EMERGENCY STEP: TURN ON AIRPLANE MODE NOW!\n1. Switch ON Airplane Mode (or turn OFF Wi-Fi & Mobile Data) immediately—this cuts off the hacker’s live access to your SMS OTPs.\n2. Go to Settings → Apps and uninstall the unknown .APK or AnyDesk app.\n3. Using another safe phone, call your bank to temporarily block mobile banking and change your passwords.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_reset_bank: {
-    text: '✅ **GOOD! NOW SECURE YOUR ACCOUNTS:**\n1. Check your SMS Forwarding settings (dial `##002#` on your phone dialer to erase any secret call/SMS forwarding set by the app).\n2. Change your NetBanking and email passwords from a clean device.\n3. Monitor your bank statement and call **1930** if you notice any unauthorized transaction.',
+    text: '✅ GOOD! NOW SECURE YOUR ACCOUNTS:\n1. Check your SMS Forwarding settings (dial ##002# on your phone dialer to erase any secret call/SMS forwarding set by the app).\n2. Change your NetBanking and email passwords from a clean device.\n3. Monitor your bank statement and call 1930 if you notice any unauthorized transaction.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_blackmail_dont_pay: {
-    text: '🛡️ **DO NOT PAY EVEN ₹1!**\n1. If you pay once, scammers know you are scared and will demand 10x more money.\n2. Take screenshots of their number/messages as evidence, then **Block** them and set your social media accounts to **Private**.\n3. File an anonymous report at **https://cybercrime.gov.in** or dial **1930**.',
+    text: '🛡️ DO NOT PAY EVEN ₹1!\n1. If you pay once, scammers know you are scared and will demand 10x more money.\n2. Take screenshots of their number/messages as evidence, then Block them and set your social media accounts to Private.\n3. File an anonymous report at https://cybercrime.gov.in or dial 1930.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   },
   verdict_blackmail_paid: {
-    text: '🛑 **STOP PAYING IMMEDIATELY!**\n1. Block the blackmailer on all platforms—never make another payment.\n2. Call **1930** to report both the extortion and the UPI/bank account where you sent the money so police can trace the mule account.\n3. Save all payment receipts and chat screenshots for your complaint on **https://cybercrime.gov.in**.',
+    text: '🛑 STOP PAYING IMMEDIATELY!\n1. Block the blackmailer on all platforms—never make another payment.\n2. Call 1930 to report both the extortion and the UPI/bank account where you sent the money so police can trace the mule account.\n3. Save all payment receipts and chat screenshots for your complaint on https://cybercrime.gov.in.',
     options: [{ label: '🔄 Start New Case Investigation', nextNode: 'root' }]
   }
 };
@@ -786,6 +816,10 @@ const MONTH_NAMES = [
   'December'
 ];
 
+function getTodayISO() {
+  return new Date().toISOString().split('T')[0];
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('checker');
   const [portalFilter, setPortalFilter] = useState('ALL');
@@ -794,7 +828,6 @@ export default function App() {
   const [inputText, setInputText] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
-  const [fileBase64, setFileBase64] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [isListening, setIsListening] = useState(false);
@@ -828,7 +861,7 @@ export default function App() {
     }
   }, [complaints]);
 
-  // Community Page States
+  // Community Page & Modal States
   const [selectedComplaintYear, setSelectedComplaintYear] = useState('2026');
   const [showComplaintForm, setShowComplaintForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -838,13 +871,12 @@ export default function App() {
   const [formDesc, setFormDesc] = useState('');
   const [formScammerNum, setFormScammerNum] = useState('');
   const [formAmountLost, setFormAmountLost] = useState('');
-  const [formDateISO, setFormDateISO] = useState('2026-10-15');
+  const [formDateISO, setFormDateISO] = useState(getTodayISO);
   const [formPhotoData, setFormPhotoData] = useState(null);
 
   // Diagnostic Chatbot States
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
   const [currentNodeKey, setCurrentNodeKey] = useState('root');
   const [chatMessages, setChatMessages] = useState([
     {
@@ -862,8 +894,8 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isChatOpen]);
 
-  // AI Pattern Monitor
-  const { combinedTrendingScams, categoryCounts } = useMemo(() => {
+  // Pattern Monitor: auto-promotes categories reaching 3+ citizen reports
+  const combinedTrendingScams = useMemo(() => {
     const counts = {};
     complaints.forEach((c) => {
       counts[c.category] = (counts[c.category] || 0) + 1;
@@ -880,11 +912,11 @@ export default function App() {
 
         dynamicTrending.push({
           id: `dynamic-${catObj.name}`,
-          title: `${catObj.name}`,
+          title: catObj.name,
           emoji: catObj.emoji,
-          badge: `🔥 AI COMMUNITY ALERT (${count} CITIZEN REPORTS)`,
+          badge: `🔥 COMMUNITY SURGE ALERT (${count} CITIZEN REPORTS)`,
           isCommunityPromoted: true,
-          shortDesc: `Auto-detected by CyberKavach AI Pattern Monitor from ${count} verified citizen complaints. Latest report: "${latestSample?.title}"`,
+          shortDesc: `Auto-promoted by CyberKavach Pattern Monitor from ${count} citizen complaints. Latest report: "${latestSample?.title}"`,
           steps: [
             {
               icon: '📩',
@@ -911,13 +943,10 @@ export default function App() {
       }
     });
 
-    return {
-      combinedTrendingScams: [...dynamicTrending, ...BASE_TRENDING_SCAMS],
-      categoryCounts: counts
-    };
+    return [...dynamicTrending, ...BASE_TRENDING_SCAMS];
   }, [complaints]);
 
-  // Group Complaints by Year
+  // Group Complaints by Year & Month
   const availableComplaintYears = useMemo(() => {
     const yearsSet = new Set(['2026', '2025', '2024']);
     complaints.forEach((c) => {
@@ -971,7 +1000,7 @@ export default function App() {
     setFormDesc('');
     setFormScammerNum('');
     setFormAmountLost('');
-    setFormDateISO('2026-10-15');
+    setFormDateISO(getTodayISO());
     setFormPhotoData(null);
     setShowComplaintForm(true);
     setActiveTab('community');
@@ -985,7 +1014,7 @@ export default function App() {
     setFormDesc(item.description);
     setFormScammerNum(item.scammerNumber || '');
     setFormAmountLost(item.amountLost || '0');
-    setFormDateISO(item.dateISO || '2026-10-15');
+    setFormDateISO(item.dateISO || getTodayISO());
     setFormPhotoData(item.photoData || null);
     setShowComplaintForm(true);
   };
@@ -1004,7 +1033,7 @@ export default function App() {
       return;
     }
 
-    const parsedDate = new Date(formDateISO || '2026-10-15');
+    const parsedDate = new Date(formDateISO || getTodayISO());
     const yearStr = String(parsedDate.getFullYear());
     const mIdx = isNaN(parsedDate.getMonth()) ? 9 : parsedDate.getMonth();
     const mName = MONTH_NAMES[mIdx];
@@ -1017,7 +1046,7 @@ export default function App() {
       description: formDesc.trim(),
       scammerNumber: formScammerNum.trim(),
       amountLost: formAmountLost.trim() || '0',
-      dateISO: formDateISO,
+      dateISO: formDateISO || getTodayISO(),
       year: yearStr,
       monthName: mName,
       monthIndex: mIdx,
@@ -1058,20 +1087,12 @@ export default function App() {
 
     setSelectedFile(file);
     setFilePreview(URL.createObjectURL(file));
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result.split(',')[1];
-      setFileBase64(base64String);
-    };
-    reader.readAsDataURL(file);
   };
 
   const clearInput = () => {
     setInputText('');
     setSelectedFile(null);
     setFilePreview(null);
-    setFileBase64(null);
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -1098,28 +1119,66 @@ export default function App() {
     recognition.start();
   };
 
-  // CLEANED & CONNECTED TO FASTAPI ML BACKEND
-  const analyzeSuspiciousInput = async () => {
-    if (!inputText.trim() && !selectedFile) {
-      alert('Please type/paste a phone number, message, link, or upload a photo/audio file first!');
+  // Connected to Citizen Ledger + FastAPI ML Backend + Local Fallback Engine
+  const analyzeSuspiciousInput = async (overrideText = null) => {
+    const isOverride = typeof overrideText === 'string';
+    const textToAnalyze = (isOverride ? overrideText : inputText).trim();
+    const fileToAnalyze = isOverride ? null : selectedFile;
+
+    if (!textToAnalyze && !fileToAnalyze) {
+      alert(
+        'Please type/paste a phone number, message, link, or upload a photo/audio file first!'
+      );
       return;
     }
 
     setLoading(true);
     setResult(null);
 
+    // Step 1: Always cross-check Citizen Community Complaints Ledger first
+    const inputDigits = textToAnalyze.replace(/\D/g, '');
+    if (inputDigits.length >= 6) {
+      const targetTail = inputDigits.slice(-10);
+      const reportedMatch = complaints.find((c) => {
+        const cDigits = (c.scammerNumber || '').replace(/\D/g, '');
+        return (
+          cDigits.length >= 6 &&
+          (targetTail === cDigits.slice(-10) || inputDigits === cDigits)
+        );
+      });
+
+      if (reportedMatch) {
+        setResult({
+          status: 'DANGER',
+          score: 97,
+          headline: 'STOP! NUMBER REPORTED BY CITIZENS FOR FRAUD!',
+          simpleReason: `This number matches a citizen complaint registered under "${reportedMatch.category}" (${reportedMatch.title}). Do not trust this caller!`,
+          detected_indicators: ['Matched Citizen Community Scam Ledger'],
+          engine: 'CyberKavach Citizen Ledger (Verified Match)',
+          actions: [
+            'Do NOT answer calls or send any money to this reported number.',
+            'Block this number immediately on your phone and WhatsApp.',
+            'Report it on 1930 or sancharsaathi.gov.in.'
+          ]
+        });
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Step 2: Query FastAPI ML Engine, falling back to local JS engine if offline
     try {
       const formData = new FormData();
-      if (inputText.trim()) {
-        formData.append('text', inputText.trim());
+      if (textToAnalyze) {
+        formData.append('text', textToAnalyze);
       }
-      if (selectedFile) {
-        formData.append('file', selectedFile);
+      if (fileToAnalyze) {
+        formData.append('file', fileToAnalyze);
       }
 
       const response = await fetch('http://127.0.0.1:8000/api/analyze', {
         method: 'POST',
-        body: formData,
+        body: formData
       });
 
       if (!response.ok) {
@@ -1130,14 +1189,26 @@ export default function App() {
       setResult(mlVerdict);
     } catch (err) {
       console.warn('Backend unavailable, using fallback:', err);
-      const localPrediction = predictFraudWithML(inputText, selectedFile, complaints);
+      const localPrediction = predictFraudWithML(
+        textToAnalyze,
+        fileToAnalyze,
+        complaints
+      );
       setResult(localPrediction);
     } finally {
       setLoading(false);
     }
   };
 
-  // Interactive Question-Oriented Chatbot Handlers
+  const handleQuickSample = (sampleText) => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setInputText(sampleText);
+    analyzeSuspiciousInput(sampleText);
+  };
+
+  // Interactive Guided Case Investigator Handlers
   const handleSelectDiagnosticOption = (option) => {
     const nextNode = DIAGNOSTIC_FLOW[option.nextNode] || DIAGNOSTIC_FLOW.root;
     setCurrentNodeKey(option.nextNode);
@@ -1165,7 +1236,10 @@ export default function App() {
 
     if (currentNodeKey === 'money_lost_time') {
       targetKey =
-        q.includes('now') || q.includes('min') || q.includes('hour') || q.includes('today')
+        q.includes('now') ||
+        q.includes('min') ||
+        q.includes('hour') ||
+        q.includes('today')
           ? 'money_golden_hour'
           : 'money_later';
     } else if (
@@ -1402,10 +1476,11 @@ export default function App() {
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={() => {
                       setSelectedFile(null);
                       setFilePreview(null);
-                      setFileBase64(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
                     }}
                     className="bg-red-100 hover:bg-red-200 text-red-700 p-2 rounded-xl"
                   >
@@ -1414,11 +1489,29 @@ export default function App() {
                 </div>
               )}
 
+              {/* Quick Test Samples Bar for Live Demo */}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mr-1">
+                  Try Sample:
+                </span>
+                {QUICK_DEMO_SAMPLES.map((sample) => (
+                  <button
+                    key={sample.label}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleQuickSample(sample.value)}
+                    className={`text-xs font-extrabold px-3 py-1.5 rounded-xl border transition-all active:scale-95 disabled:opacity-50 ${sample.style}`}
+                  >
+                    {sample.label}
+                  </button>
+                ))}
+              </div>
+
               <textarea
                 rows="3"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder="Type any mobile number (e.g. 9848022338, +92..., 111-11-1111), paste a suspicious SMS/link, or upload a call recording..."
+                placeholder="Type any mobile number (e.g. 9876140321, +92..., 111-11-1111), paste a suspicious SMS/link, or upload a call recording..."
                 className="w-full bg-slate-50 rounded-2xl p-4 text-base md:text-lg font-medium text-slate-900 border border-slate-200 focus:outline-none focus:border-blue-500 resize-none"
               />
 
@@ -1468,7 +1561,7 @@ export default function App() {
 
                 <button
                   type="button"
-                  onClick={analyzeSuspiciousInput}
+                  onClick={() => analyzeSuspiciousInput()}
                   disabled={loading}
                   className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-400 text-white font-extrabold text-lg px-8 py-3.5 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
                 >
@@ -1527,23 +1620,31 @@ export default function App() {
                       {result.simpleReason}
                     </p>
 
-                    {result.detected_indicators && result.detected_indicators.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-xs font-bold opacity-80">Triggers:</span>
-                        {result.detected_indicators.map((ind, i) => (
-                          <span key={i} className="text-xs bg-black/20 px-2 py-0.5 rounded-md font-bold">
-                            ⚠️ {ind}
+                    {result.detected_indicators &&
+                      result.detected_indicators.length > 0 && (
+                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-1.5 pt-1">
+                          <span className="text-xs font-bold opacity-80">
+                            Signals:
                           </span>
-                        ))}
-                      </div>
-                    )}
+                          {result.detected_indicators.map((ind, i) => (
+                            <span
+                              key={i}
+                              className="text-xs bg-black/20 px-2 py-0.5 rounded-md font-bold"
+                            >
+                              {result.status === 'SAFE' ? '✓' : '⚠️'} {ind}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
                     {result.extracted_media_text && (
                       <div className="mt-2 bg-black/20 p-2.5 rounded-xl text-xs font-mono text-left max-h-24 overflow-y-auto">
                         <span className="font-bold block text-emerald-200">
-                          {result.modality === 'image_ocr' ? '📷 Extracted from Photo:' : '🎙️ Transcribed from Audio:'}
+                          {result.modality === 'image_ocr'
+                            ? '📷 Extracted from Photo:'
+                            : '🎙️ Transcribed from Audio:'}
                         </span>
-                        "{result.extracted_media_text}"
+                        &ldquo;{result.extracted_media_text}&rdquo;
                       </div>
                     )}
                   </div>
@@ -1628,14 +1729,15 @@ export default function App() {
                 <span className="text-3xl">📢</span>
                 <div>
                   <h2 className="font-extrabold text-lg text-amber-950">
-                    Live Trending Cyber Scams (AI + Citizen Monitored)
+                    Live Trending Cyber Scams (Pattern + Citizen Monitored)
                   </h2>
                   <p className="text-sm text-amber-900 font-medium">
-                    When 3 or more citizens report the same scam pattern in our Community Ledger, our AI Pattern Monitor automatically promotes it here!
+                    When 3 or more citizens report the same scam category in our Community Ledger, our Pattern Monitor automatically promotes it here!
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={openNewComplaintModal}
                 className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shrink-0 flex items-center gap-1.5 self-start sm:self-auto"
               >
@@ -1719,7 +1821,7 @@ export default function App() {
             <div className="bg-white rounded-3xl p-5 md:p-6 shadow-md border border-slate-200 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
               <div>
                 <span className="bg-purple-100 text-purple-800 text-xs font-black px-3 py-1 rounded-full uppercase">
-                  10-Year Cyber Crime & Caller Report (2017 – 2026)
+                  10-Year Cyber Crime & Caller Trend Explorer (2017 – 2026)
                 </span>
                 <h2 className="text-xl md:text-2xl font-black text-slate-900 mt-2">
                   Year-Wise Money Lost to Spam Calls, International Callers & SMS
@@ -1731,6 +1833,7 @@ export default function App() {
 
               <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 self-stretch lg:self-auto justify-center">
                 <button
+                  type="button"
                   onClick={() => setChartView('bar')}
                   className={`px-4 py-2.5 rounded-xl font-extrabold text-xs md:text-sm flex items-center gap-2 transition-all ${
                     chartView === 'bar'
@@ -1743,6 +1846,7 @@ export default function App() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setChartView('callers')}
                   className={`px-4 py-2.5 rounded-xl font-extrabold text-xs md:text-sm flex items-center gap-2 transition-all ${
                     chartView === 'callers'
@@ -1760,7 +1864,7 @@ export default function App() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-red-600 text-white rounded-2xl p-4 shadow">
                 <div className="text-xs font-bold uppercase opacity-85">
-                  Total Lost (10 Years)
+                  Estimated Total Lost (10 Yrs)
                 </div>
                 <div className="text-2xl font-black mt-1">₹47,145 Cr</div>
                 <div className="text-xs mt-1 opacity-90">
@@ -1882,6 +1986,7 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Selected Year Deep Dive Card */}
                 <div className="bg-slate-900 text-white rounded-3xl p-5 md:p-6 shadow-xl border-2 border-purple-500 space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
                     <div className="flex items-center gap-3">
@@ -1970,6 +2075,21 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  <div className="bg-slate-800/70 border border-slate-700 rounded-2xl p-4 space-y-2 text-sm">
+                    <p className="text-slate-200 leading-relaxed">
+                      <strong className="text-amber-300">What happened:</strong>{' '}
+                      {activeYearData.elaboratedStory}
+                    </p>
+                    <p className="text-slate-300 text-xs">
+                      <strong className="text-emerald-300">
+                        Key Warning Sign:
+                      </strong>{' '}
+                      {activeYearData.keyWarningSign} •{' '}
+                      <strong className="text-purple-300">Primary Target:</strong>{' '}
+                      {activeYearData.topTarget}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -1985,17 +2105,106 @@ export default function App() {
                         📞 Interactive 10-Year Spam & International Call Graph (2017 – 2026)
                       </h3>
                       <p className="text-xs text-slate-500 font-semibold">
-                        Compare Domestic Scam Calls vs. International Callers!
+                        Compare Domestic Scam Calls (Red) vs. International VoIP Callers (Orange) across years!
                       </p>
                     </div>
                   </div>
+                  <div className="flex items-center gap-3 text-xs font-extrabold">
+                    <span className="flex items-center gap-1.5 text-red-600">
+                      <span className="w-3 h-3 rounded bg-red-600 inline-block" />
+                      Domestic Calls
+                    </span>
+                    <span className="flex items-center gap-1.5 text-orange-500">
+                      <span className="w-3 h-3 rounded bg-orange-500 inline-block" />
+                      Intl Callers
+                    </span>
+                  </div>
                 </div>
 
-                <div className="bg-slate-900 text-white rounded-3xl p-5 md:p-6 shadow-xl border-2 border-red-500 space-y-5">
+                {/* Dual-Bar Interactive Caller Chart */}
+                <div className="pt-4 pb-2 px-2 overflow-x-auto">
+                  <div className="min-w-[620px] h-64 flex items-end justify-between gap-3 border-b-2 border-slate-300 pb-2 px-2">
+                    {TEN_YEAR_FRAUD_DATA.map((item, idx) => {
+                      const maxCallVal = 3200;
+                      const domPct = Math.max(
+                        6,
+                        Math.round((item.domesticScamCallsCr / maxCallVal) * 100)
+                      );
+                      const intlPct = Math.max(
+                        5,
+                        Math.round((item.intlCallerFraudCr / maxCallVal) * 100)
+                      );
+                      const isSelected = idx === selectedYearIdx;
+
+                      return (
+                        <button
+                          key={item.year}
+                          type="button"
+                          onClick={() => setSelectedYearIdx(idx)}
+                          className={`flex-1 flex flex-col items-center justify-end h-full focus:outline-none transition-transform ${
+                            isSelected
+                              ? 'scale-105'
+                              : 'opacity-75 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="w-full h-full flex items-end justify-center gap-1">
+                            <div
+                              style={{ height: `${domPct}%` }}
+                              title={`Domestic: ₹${item.domesticScamCallsCr} Cr`}
+                              className={`w-4 sm:w-5 rounded-t-lg bg-red-600 transition-all ${
+                                isSelected ? 'ring-2 ring-red-300 shadow-lg' : ''
+                              }`}
+                            />
+                            <div
+                              style={{ height: `${intlPct}%` }}
+                              title={`International: ₹${item.intlCallerFraudCr} Cr`}
+                              className={`w-4 sm:w-5 rounded-t-lg bg-orange-500 transition-all ${
+                                isSelected ? 'ring-2 ring-orange-300 shadow-lg' : ''
+                              }`}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="min-w-[620px] flex justify-between gap-2 pt-3 px-1">
+                    {TEN_YEAR_FRAUD_DATA.map((item, idx) => {
+                      const isSelected = idx === selectedYearIdx;
+                      return (
+                        <button
+                          key={item.year}
+                          type="button"
+                          onClick={() => setSelectedYearIdx(idx)}
+                          className={`flex-1 py-1.5 rounded-xl font-extrabold text-xs transition-all ${
+                            isSelected
+                              ? 'bg-red-600 text-white shadow-md scale-105'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {item.year}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Selected Year Call Breakdown */}
+                <div className="bg-slate-900 text-white rounded-3xl p-5 md:p-6 shadow-xl border-2 border-red-500 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-lg font-black">
+                      Year {activeYearData.year} Telecom Scam Split (₹
+                      {totalCallLossSelectedYear.toLocaleString('en-IN')} Cr Total Call Fraud)
+                    </h4>
+                    <span className="text-xs font-extrabold bg-red-600/30 border border-red-400/50 text-red-200 px-3 py-1 rounded-full">
+                      Spoofed Blocked: {activeYearData.spoofedCallsBlockedPerDay}
+                    </span>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl p-3.5">
                       <div className="text-xs font-bold text-red-400 uppercase">
-                        🔴 Domestic Scam Calls
+                        🔴 Domestic Scam Calls ({domCallSharePct}%)
                       </div>
                       <div className="text-2xl font-black text-white mt-1">
                         ₹{activeYearData.domesticScamCallsCr.toLocaleString('en-IN')} Cr
@@ -2004,16 +2213,60 @@ export default function App() {
 
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl p-3.5">
                       <div className="text-xs font-bold text-orange-400 uppercase">
-                        🟠 International Callers
+                        🟠 International Callers ({intlCallSharePct}%)
                       </div>
                       <div className="text-2xl font-black text-white mt-1">
                         ₹{activeYearData.intlCallerFraudCr.toLocaleString('en-IN')} Cr
                       </div>
                     </div>
                   </div>
+
+                  <div className="bg-slate-800/70 border border-slate-700 rounded-2xl p-4 space-y-1.5 text-xs md:text-sm">
+                    <p className="text-slate-200">
+                      <strong className="text-orange-300">Top Foreign Prefixes:</strong>{' '}
+                      {activeYearData.topIntlOrigins}
+                    </p>
+                    <p className="text-slate-300">
+                      <strong className="text-emerald-300">Caller Tactic:</strong>{' '}
+                      {activeYearData.callerTactic}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* 10-Year Category Share Breakdown */}
+            <div className="bg-white rounded-3xl p-5 md:p-6 shadow-md border border-slate-200 space-y-4">
+              <h3 className="text-lg font-extrabold text-slate-900">
+                📌 10-Year Cumulative Fraud Share by Channel
+              </h3>
+              <div className="space-y-3">
+                {CATEGORY_BREAKDOWN.map((cat) => (
+                  <div key={cat.id} className="space-y-1">
+                    <div className="flex flex-wrap items-center justify-between text-xs md:text-sm font-bold text-slate-800">
+                      <span>
+                        {cat.icon} {cat.label}
+                      </span>
+                      <span className="text-slate-900 font-black">
+                        ₹{cat.amountCr.toLocaleString('en-IN')} Cr ({cat.percentage}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        style={{ width: `${cat.percentage}%` }}
+                        className={`h-full rounded-full ${cat.badgeBg}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5 pt-1">
+                <Info className="w-4 h-4 shrink-0 text-slate-400" />
+                <span>
+                  Note: Prototype trend dataset compiled for awareness visualization based on publicly reported I4C/TRAI cybercrime growth trajectories.
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2039,6 +2292,27 @@ export default function App() {
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back to Scam Checker</span>
               </button>
+            </div>
+
+            {/* Audience Filter Pills */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-extrabold text-slate-500 uppercase mr-1">
+                Filter by Audience:
+              </span>
+              {PORTAL_AUDIENCES.map((aud) => (
+                <button
+                  key={aud}
+                  type="button"
+                  onClick={() => setPortalFilter(aud)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                    portalFilter === aud
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {aud === 'ALL' ? 'All Portals' : aud}
+                </button>
+              ))}
             </div>
 
             <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
@@ -2068,8 +2342,11 @@ export default function App() {
                             {portal.audience}
                           </span>
                         </td>
-                        <td className="py-4 px-4 text-xs text-slate-600 leading-relaxed">
-                          {portal.whenToApproach}
+                        <td className="py-4 px-4 text-xs text-slate-600 leading-relaxed space-y-1">
+                          <p className="font-semibold text-slate-800">
+                            {portal.whenToApproach}
+                          </p>
+                          <p className="text-slate-500">{portal.actionEngine}</p>
                         </td>
                         <td className="py-4 px-4 text-right">
                           <a
@@ -2102,7 +2379,7 @@ export default function App() {
                   <span>Live Citizen Incident Ledger</span>
                 </div>
                 <div className="text-sm text-slate-300">
-                  Total community reports recorded: {complaints.length}
+                  Total community reports recorded: {complaints.length} • Any scammer number reported here is immediately flagged in the Scam Checker.
                 </div>
               </div>
 
@@ -2145,75 +2422,98 @@ export default function App() {
 
             {/* MONTH-WISE COMPLAINTS */}
             <div className="space-y-6">
-              {complaintsByMonthForSelectedYear.map((monthGroup) => (
-                <div
-                  key={monthGroup.monthName}
-                  className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden"
-                >
-                  <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
-                    <h3 className="font-black text-base md:text-lg">
-                      {monthGroup.monthName} {selectedComplaintYear}
-                    </h3>
-                    <span className="text-xs bg-emerald-500/20 text-emerald-300 px-3 py-0.5 rounded-full font-bold">
-                      {monthGroup.items.length} Reports
-                    </span>
-                  </div>
+              {complaintsByMonthForSelectedYear.length === 0 ? (
+                <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 text-slate-500 font-semibold">
+                  No citizen reports recorded for {selectedComplaintYear} yet. Click &ldquo;+ Register New Experience&rdquo; to submit one.
+                </div>
+              ) : (
+                complaintsByMonthForSelectedYear.map((monthGroup) => (
+                  <div
+                    key={monthGroup.monthName}
+                    className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden"
+                  >
+                    <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+                      <h3 className="font-black text-base md:text-lg">
+                        {monthGroup.monthName} {selectedComplaintYear}
+                      </h3>
+                      <span className="text-xs bg-emerald-500/20 text-emerald-300 px-3 py-0.5 rounded-full font-bold">
+                        {monthGroup.items.length} Reports
+                      </span>
+                    </div>
 
-                  <div className="divide-y divide-slate-200">
-                    {monthGroup.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="p-5 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row items-start justify-between gap-4"
-                      >
-                        <div className="space-y-2 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="bg-red-100 text-red-800 text-xs font-black px-2.5 py-0.5 rounded-full">
-                              {item.category}
-                            </span>
-                            <span className="text-xs font-bold text-slate-500">
-                              📅 {item.dateISO} • By {item.reporterName}
-                            </span>
+                    <div className="divide-y divide-slate-200">
+                      {monthGroup.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-5 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row items-start justify-between gap-4"
+                        >
+                          <div className="space-y-2 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="bg-red-100 text-red-800 text-xs font-black px-2.5 py-0.5 rounded-full">
+                                {item.category}
+                              </span>
+                              <span className="text-xs font-bold text-slate-500">
+                                📅 {item.dateISO} • By {item.reporterName}
+                              </span>
+                              {Number(item.amountLost) > 0 && (
+                                <span className="bg-amber-100 text-amber-900 text-xs font-black px-2.5 py-0.5 rounded-full">
+                                  💸 Lost ₹{Number(item.amountLost).toLocaleString('en-IN')}
+                                </span>
+                              )}
+                            </div>
+
+                            <h4 className="text-base md:text-lg font-extrabold text-slate-900">
+                              {item.title}
+                            </h4>
+
+                            <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                              {item.description}
+                            </p>
+
+                            {item.scammerNumber && (
+                              <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-300 px-3 py-1 rounded-xl text-xs font-extrabold text-slate-800">
+                                <span>☎️ Scammer Number / ID:</span>
+                                <span className="text-red-600">
+                                  {item.scammerNumber}
+                                </span>
+                              </div>
+                            )}
+
+                            {item.photoData && (
+                              <div className="pt-2">
+                                <img
+                                  src={item.photoData}
+                                  alt="Citizen submitted proof"
+                                  className="max-h-40 rounded-xl border border-slate-300 object-cover shadow-sm"
+                                />
+                              </div>
+                            )}
                           </div>
 
-                          <h4 className="text-base md:text-lg font-extrabold text-slate-900">
-                            {item.title}
-                          </h4>
-
-                          <p className="text-sm text-slate-700 font-medium leading-relaxed">
-                            {item.description}
-                          </p>
-
-                          {item.scammerNumber && (
-                            <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-300 px-3 py-1 rounded-xl text-xs font-extrabold text-slate-800">
-                              <span>☎️ Scammer Number / ID:</span>
-                              <span className="text-red-600">{item.scammerNumber}</span>
-                            </div>
-                          )}
+                          <div className="flex md:flex-col items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openEditComplaintModal(item)}
+                              className="bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs px-3 py-2 rounded-xl border border-blue-200 flex items-center gap-1.5"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComplaint(item.id)}
+                              className="bg-red-50 hover:bg-red-100 text-red-700 font-extrabold text-xs px-3 py-2 rounded-xl border border-red-200 flex items-center gap-1.5"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
                         </div>
-
-                        <div className="flex md:flex-col items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openEditComplaintModal(item)}
-                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs px-3 py-2 rounded-xl border border-blue-200 flex items-center gap-1.5"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteComplaint(item.id)}
-                            className="bg-red-50 hover:bg-red-100 text-red-700 font-extrabold text-xs px-3 py-2 rounded-xl border border-red-200 flex items-center gap-1.5"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -2238,6 +2538,7 @@ export default function App() {
       <div className="fixed bottom-5 right-5 z-40">
         {!isChatOpen ? (
           <button
+            type="button"
             onClick={() => setIsChatOpen(true)}
             className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-4 sm:px-5 py-3.5 rounded-full shadow-2xl flex items-center gap-2.5 border-2 border-white transition-transform hover:scale-105"
           >
@@ -2257,6 +2558,7 @@ export default function App() {
               </div>
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={resetChatInvestigation}
                   className="text-slate-400 hover:text-white p-1.5"
                   title="Restart"
@@ -2264,6 +2566,7 @@ export default function App() {
                   <RotateCcw className="w-4 h-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setIsChatOpen(false)}
                   className="text-slate-400 hover:text-white p-1.5"
                 >
@@ -2298,6 +2601,7 @@ export default function App() {
                         {msg.options.map((opt, oIdx) => (
                           <button
                             key={oIdx}
+                            type="button"
                             onClick={() => handleSelectDiagnosticOption(opt)}
                             className="text-left text-xs font-extrabold bg-blue-50 hover:bg-blue-600 text-blue-800 hover:text-white px-3.5 py-2.5 rounded-xl border border-blue-200 transition-colors shadow-sm"
                           >
@@ -2321,6 +2625,7 @@ export default function App() {
                 className="flex-1 bg-slate-100 text-slate-900 text-xs sm:text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
+                type="button"
                 onClick={handleSendChatMessage}
                 className="bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded-xl"
               >
@@ -2330,6 +2635,205 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* CITIZEN COMPLAINT REGISTRATION / EDIT MODAL */}
+      {showComplaintForm && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border-2 border-emerald-500 overflow-hidden my-8">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <MessageSquarePlus className="w-6 h-6 text-emerald-400" />
+                <div>
+                  <h3 className="font-black text-lg leading-tight">
+                    {editingId
+                      ? 'Edit Scam Experience'
+                      : 'Register Citizen Scam Experience'}
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Reported numbers immediately trigger alerts in the Scam Checker.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowComplaintForm(false);
+                  setEditingId(null);
+                }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveComplaint}
+              className="p-6 space-y-4 max-h-[78vh] overflow-y-auto"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                    Your Name & City (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formReporter}
+                    onChange={(e) => setFormReporter(e.target.value)}
+                    placeholder="e.g. Ravi T. (Hyderabad)"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                    Incident Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formDateISO}
+                    onChange={(e) => setFormDateISO(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                  Scam Category
+                </label>
+                <select
+                  value={formCategory}
+                  onChange={(e) => setFormCategory(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
+                >
+                  {COMPLAINT_CATEGORIES.map((cat) => (
+                    <option key={cat.name} value={cat.name}>
+                      {cat.emoji} {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                  Short Headline *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  placeholder="e.g. Fake CBI video call from +855 demanding ₹50,000"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                  What Happened? (Min. 15 characters) *
+                </label>
+                <textarea
+                  rows="3"
+                  required
+                  value={formDesc}
+                  onChange={(e) => setFormDesc(e.target.value)}
+                  placeholder="Describe how the scammer contacted you and what red flags others should watch for..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:border-emerald-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                    Scammer Phone / UPI ID
+                  </label>
+                  <input
+                    type="text"
+                    value={formScammerNum}
+                    onChange={(e) => setFormScammerNum(e.target.value)}
+                    placeholder="e.g. +91 9876543210 or +855..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                    Amount Lost in ₹ (0 if avoided)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formAmountLost}
+                    onChange={(e) => setFormAmountLost(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">
+                  Attach Proof Screenshot (Optional, max 4 MB)
+                </label>
+                <input
+                  ref={complaintPhotoRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleComplaintPhotoUpload}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => complaintPhotoRef.current?.click()}
+                    className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2"
+                  >
+                    <Camera className="w-4 h-4 text-emerald-600" />
+                    <span>
+                      {formPhotoData ? 'Change Screenshot' : 'Upload Screenshot'}
+                    </span>
+                  </button>
+                  {formPhotoData && (
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={formPhotoData}
+                        alt="Evidence preview"
+                        className="w-12 h-12 object-cover rounded-lg border border-slate-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFormPhotoData(null)}
+                        className="text-xs font-bold text-red-600 hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowComplaintForm(false);
+                    setEditingId(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm px-6 py-2.5 rounded-xl shadow-md"
+                >
+                  {editingId ? 'Save Changes' : 'Submit Report'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
