@@ -32,9 +32,51 @@ import {
   Camera,
   Flame,
   PlusCircle,
-  FolderOpen
+  FolderOpen,
+  Languages,
+  MapPin
 } from 'lucide-react';
-import { predictFraudWithML } from './MLFraudEngine';
+import { predictFraudWithML } from './mlFraudEngine';
+import {
+  SUPPORTED_LANGUAGES,
+  TRANSLATIONS,
+  MONTH_NAMES_BY_LANG,
+  CATEGORY_LABELS_BY_LANG,
+  detectLanguageByLocation,
+  getCachedTranslation,
+  translateText
+} from './translations';
+
+// Reusable component that dynamically translates & caches any text block across all pages
+function Trans({ text, lang }) {
+  const [output, setOutput] = useState(
+    () => getCachedTranslation(text, lang) || text || ''
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    if (!text) {
+      setOutput('');
+      return;
+    }
+
+    const cached = getCachedTranslation(text, lang);
+    if (cached) {
+      setOutput(cached);
+      return;
+    }
+
+    translateText(text, lang).then((translated) => {
+      if (mounted) setOutput(translated);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [text, lang]);
+
+  return <>{output}</>;
+}
 
 // 1. OFFICIAL INDIAN CYBER & DATA SECURITY PORTALS DIRECTORY
 const NATIONAL_CYBER_PORTALS = [
@@ -56,7 +98,7 @@ const NATIONAL_CYBER_PORTALS = [
     audience: 'Mobile Users',
     audienceBadge: 'bg-blue-100 text-blue-800 border-blue-300',
     whenToApproach:
-      'Approach when your phone is lost/stolen, when you receive a scam call/SMS (Chakshu), or to check how many SIM cards are issued in your Aadhaar name.',
+      'Approach when your phone is lost/stolen, when you receive a scam call/SMS (Chakshu), or to check how many SIM cards are issued in your name.',
     purpose:
       'A dashboard to manage your mobile identity, block lost phones, and check if others are using your identity.',
     actionEngine:
@@ -336,7 +378,7 @@ const INITIAL_COMMUNITY_COMPLAINTS = [
     category: 'Fake "Digital Arrest" CBI / FedEx Video Call',
     title: 'Cambodia (+855) caller pretended to be Mumbai Cyber Police',
     description:
-      'Received an automated IVR call saying my Aadhaar was used to send a FedEx parcel to Taiwan. They connected me to a Skype video call showing a fake police station. I disconnected immediately.',
+      'Received an automated IVR call saying my identity was used to send a FedEx parcel to Taiwan. They connected me to a Skype video call showing a fake police station. I disconnected immediately.',
     scammerNumber: '+855 97234112',
     amountLost: '0',
     dateISO: '2026-08-22',
@@ -430,23 +472,23 @@ const SPAM_CALLER_PREFIXES = [
 
 const QUICK_DEMO_SAMPLES = [
   {
-    label: '✅ Valid Mobile (9876140321)',
+    labelKey: 'sampleValidMobile',
     value: '9876140321',
     style: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
   },
   {
-    label: '⚠️ Promo Spam SMS',
+    labelKey: 'samplePromoSpam',
     value:
       'Hurry! Limited time offer: Flat 60% OFF sale ends tonight! Use code SAVE60 to shop now. T&C apply.',
     style: 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
   },
   {
-    label: '🚫 Spoofed Caller (111-11-1111)',
+    labelKey: 'sampleSpoofed',
     value: '111-11-1111',
     style: 'bg-red-50 hover:bg-red-100 text-red-800 border-red-300'
   },
   {
-    label: '🚨 Bank KYC Phishing SMS',
+    labelKey: 'sampleKycScam',
     value:
       'URGENT: Your SBI PAN KYC has expired and your bank account will be blocked tonight. Update now: bit.ly/sbi-kyc-verify',
     style: 'bg-red-50 hover:bg-red-100 text-red-800 border-red-300'
@@ -801,20 +843,7 @@ const STORAGE_KEY = 'cyberkavach_community_complaints_v1';
 const THREE_YEARS_MS = 3 * 365 * 24 * 60 * 60 * 1000;
 const PROMOTION_THRESHOLD = 3;
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December'
-];
+const ENGLISH_MONTH_NAMES = MONTH_NAMES_BY_LANG.en;
 
 function getTodayISO() {
   return new Date().toISOString().split('T')[0];
@@ -823,6 +852,83 @@ function getTodayISO() {
 export default function App() {
   const [activeTab, setActiveTab] = useState('checker');
   const [portalFilter, setPortalFilter] = useState('ALL');
+
+  // Language & Automatic Geolocation State
+  const [lang, setLang] = useState('en');
+  const [locationBanner, setLocationBanner] = useState(null); // { type: 'auto' | 'denied', detail?: string }
+  const userManuallyChangedLangRef = useRef(false);
+
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  const localizedMonths = MONTH_NAMES_BY_LANG[lang] || MONTH_NAMES_BY_LANG.en;
+  const localizedCategories =
+    CATEGORY_LABELS_BY_LANG[lang] || CATEGORY_LABELS_BY_LANG.en;
+
+  const getLocalizedCategory = (canonicalCat) =>
+    localizedCategories[canonicalCat] || canonicalCat;
+
+  const handleManualLanguageChange = (newLang) => {
+    userManuallyChangedLangRef.current = true;
+    setLang(newLang);
+    setLocationBanner(null);
+  };
+
+  // Automatic location-based language switching (fires on load AND immediately if permission changes to granted)
+  useEffect(() => {
+    let mounted = true;
+    let permissionObj = null;
+
+    const syncLanguageFromLocation = async () => {
+      const res = await detectLanguageByLocation();
+      if (!mounted || userManuallyChangedLangRef.current) return;
+
+      if (res.status === 'granted') {
+        setLang(res.lang);
+        if (res.region) {
+          setLocationBanner({
+            type: 'auto',
+            detail: `${res.region} → ${SUPPORTED_LANGUAGES[res.lang].nativeName}`
+          });
+        } else {
+          setLocationBanner(null);
+        }
+      } else {
+        // Permission denied or geolocation unavailable -> stay on English and show notice
+        setLang('en');
+        setLocationBanner({ type: 'denied' });
+      }
+    };
+
+    syncLanguageFromLocation();
+
+    // Watch live browser permission changes so granting location access immediately switches language
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((permStatus) => {
+          if (!mounted) return;
+          permissionObj = permStatus;
+          permStatus.onchange = () => {
+            if (permStatus.state === 'granted') {
+              userManuallyChangedLangRef.current = false;
+              syncLanguageFromLocation();
+            } else if (permStatus.state === 'denied') {
+              if (!userManuallyChangedLangRef.current) {
+                setLang('en');
+                setLocationBanner({ type: 'denied' });
+              }
+            }
+          };
+        })
+        .catch(() => {
+          // Permissions API not supported in some browsers
+        });
+    }
+
+    return () => {
+      mounted = false;
+      if (permissionObj) permissionObj.onchange = null;
+    };
+  }, []);
 
   // Scam Checker States
   const [inputText, setInputText] = useState('');
@@ -874,7 +980,7 @@ export default function App() {
   const [formDateISO, setFormDateISO] = useState(getTodayISO);
   const [formPhotoData, setFormPhotoData] = useState(null);
 
-  // Diagnostic Chatbot States
+  // Diagnostic Chatbot States (All rendered dynamically through <Trans> so entire history translates live!)
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [currentNodeKey, setCurrentNodeKey] = useState('root');
@@ -962,11 +1068,14 @@ export default function App() {
 
     const monthGroups = {};
     yearItems.forEach((item) => {
-      const mKey = item.monthName || 'October';
+      const idx =
+        typeof item.monthIndex === 'number'
+          ? item.monthIndex
+          : Math.max(0, ENGLISH_MONTH_NAMES.indexOf(item.monthName));
+      const mKey = String(idx);
       if (!monthGroups[mKey]) {
         monthGroups[mKey] = {
-          monthName: mKey,
-          monthIndex: item.monthIndex ?? 0,
+          monthIndex: idx,
           items: []
         };
       }
@@ -1022,21 +1131,19 @@ export default function App() {
   const handleSaveComplaint = (e) => {
     e.preventDefault();
     if (!formTitle.trim() || !formDesc.trim()) {
-      alert('Please enter a title and description of your experience.');
+      alert(t.alertMissingFields);
       return;
     }
 
     if (formDesc.trim().length < 15) {
-      alert(
-        'Please write a genuine, detailed description (at least 15 characters) so others can understand the scam.'
-      );
+      alert(t.alertShortDesc);
       return;
     }
 
     const parsedDate = new Date(formDateISO || getTodayISO());
     const yearStr = String(parsedDate.getFullYear());
     const mIdx = isNaN(parsedDate.getMonth()) ? 9 : parsedDate.getMonth();
-    const mName = MONTH_NAMES[mIdx];
+    const mName = ENGLISH_MONTH_NAMES[mIdx];
 
     const record = {
       id: editingId || `c-${Date.now()}`,
@@ -1067,11 +1174,7 @@ export default function App() {
   };
 
   const handleDeleteComplaint = (id) => {
-    if (
-      window.confirm(
-        'Are you sure you want to delete this registered complaint from the database?'
-      )
-    ) {
+    if (window.confirm(t.confirmDelete)) {
       setComplaints((prev) => prev.filter((item) => item.id !== id));
     }
   };
@@ -1106,7 +1209,7 @@ export default function App() {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = 'en-IN';
+    recognition.lang = SUPPORTED_LANGUAGES[lang]?.speechLang || 'en-IN';
     recognition.interimResults = false;
 
     recognition.onstart = () => setIsListening(true);
@@ -1126,9 +1229,7 @@ export default function App() {
     const fileToAnalyze = isOverride ? null : selectedFile;
 
     if (!textToAnalyze && !fileToAnalyze) {
-      alert(
-        'Please type/paste a phone number, message, link, or upload a photo/audio file first!'
-      );
+      alert(t.alertEmptyInput);
       return;
     }
 
@@ -1208,7 +1309,7 @@ export default function App() {
     analyzeSuspiciousInput(sampleText);
   };
 
-  // Interactive Guided Case Investigator Handlers
+  // Interactive Guided Case Investigator Handlers (Supports multilingual text queries)
   const handleSelectDiagnosticOption = (option) => {
     const nextNode = DIAGNOSTIC_FLOW[option.nextNode] || DIAGNOSTIC_FLOW.root;
     setCurrentNodeKey(option.nextNode);
@@ -1223,15 +1324,19 @@ export default function App() {
     ]);
   };
 
-  const handleSendChatMessage = () => {
+  const handleSendChatMessage = async () => {
     const userText = chatInput.trim();
     if (!userText) return;
 
-    const updatedHistory = [...chatMessages, { sender: 'user', text: userText }];
-    setChatMessages(updatedHistory);
+    setChatMessages((prev) => [...prev, { sender: 'user', text: userText }]);
     setChatInput('');
 
-    const q = userText.toLowerCase();
+    // If user typed in a regional language, translate to English for accurate intent routing
+    const normalizedForRouting = /[\u0900-\u0D7F]/.test(userText)
+      ? await translateText(userText, 'en')
+      : userText;
+
+    const q = normalizedForRouting.toLowerCase();
     let targetKey = 'root';
 
     if (currentNodeKey === 'money_lost_time') {
@@ -1248,6 +1353,7 @@ export default function App() {
       q.includes('stole') ||
       q.includes('money') ||
       q.includes('upi') ||
+      q.includes('debited') ||
       q.includes('rs')
     ) {
       targetKey = 'money_lost_time';
@@ -1343,17 +1449,32 @@ export default function App() {
               <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">
                 CyberKavach <span className="text-emerald-400">AI</span>
               </h1>
-              <p className="text-xs text-slate-300">
-                Public Cyber Fraud, Spam Call & Scam Awareness Portal
-              </p>
+              <p className="text-xs text-slate-300">{t.subtitle}</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Regional Language Switcher (Auto-updates via geolocation; user can manually switch anytime) */}
+            <div className="flex items-center bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 gap-1.5">
+              <Languages className="w-4 h-4 text-emerald-400 shrink-0" />
+              <select
+                aria-label="Select Language"
+                value={lang}
+                onChange={(e) => handleManualLanguageChange(e.target.value)}
+                className="bg-slate-800 text-white text-xs font-extrabold focus:outline-none cursor-pointer"
+              >
+                {Object.values(SUPPORTED_LANGUAGES).map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.nativeName} ({l.label})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <button
               type="button"
               onClick={() => setActiveTab('portals')}
-              className={`px-3.5 py-2 rounded-xl font-extrabold text-xs md:text-sm flex items-center gap-2 shadow transition-all ${
+              className={`px-3 py-2 rounded-xl font-extrabold text-xs md:text-sm flex items-center gap-1.5 shadow transition-all ${
                 activeTab === 'portals'
                   ? 'bg-emerald-500 text-slate-950 ring-2 ring-white'
                   : 'bg-blue-600 hover:bg-blue-500 text-white'
@@ -1361,25 +1482,61 @@ export default function App() {
               title="Open National Cyber & Data Security Portals Directory"
             >
               <Landmark className="w-4 h-4 shrink-0" />
-              <span>Official Cyber Help Portals</span>
+              <span>{t.officialPortalsBtn}</span>
             </button>
 
             <a
               href="tel:1930"
-              className="bg-red-600 hover:bg-red-500 text-white px-3.5 py-2 rounded-xl font-extrabold text-xs md:text-sm flex items-center gap-1.5 shadow"
+              className="bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-xl font-extrabold text-xs md:text-sm flex items-center gap-1.5 shadow"
               title="National Cyber Crime Helpline"
             >
               <PhoneCall className="w-4 h-4 shrink-0" />
-              <span>Helpline: 1930</span>
+              <span>{t.helpline}</span>
             </a>
           </div>
         </div>
+
+        {/* Location Auto-Update / Denied Notice Banner */}
+        {locationBanner && (
+          <div
+            className={`border-t text-xs font-bold px-4 py-1.5 text-center flex items-center justify-center gap-2 ${
+              locationBanner.type === 'auto'
+                ? 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
+                : 'bg-amber-950/90 border-amber-700 text-amber-200'
+            }`}
+          >
+            <MapPin
+              className={`w-3.5 h-3.5 shrink-0 ${
+                locationBanner.type === 'auto'
+                  ? 'text-emerald-400'
+                  : 'text-amber-400'
+              }`}
+            />
+            <span>
+              {locationBanner.type === 'auto' ? (
+                <>
+                  {t.detectedBanner} <strong>{locationBanner.detail}</strong>
+                </>
+              ) : (
+                t.locationDeniedBanner
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => setLocationBanner(null)}
+              className="ml-2 opacity-80 hover:opacity-100"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Main Navigation Tabs */}
       <div className="max-w-5xl w-full mx-auto px-4 pt-5">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
           <button
+            type="button"
             onClick={() => setActiveTab('checker')}
             className={`py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'checker'
@@ -1388,10 +1545,11 @@ export default function App() {
             }`}
           >
             <Sparkles className="w-4 h-4 shrink-0" />
-            <span>🔍 Check Scam / Number</span>
+            <span>{t.tabChecker}</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('trending')}
             className={`py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'trending'
@@ -1400,10 +1558,13 @@ export default function App() {
             }`}
           >
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>🚨 Trending ({combinedTrendingScams.length})</span>
+            <span>
+              {t.tabTrending} ({combinedTrendingScams.length})
+            </span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('analytics')}
             className={`py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'analytics'
@@ -1412,10 +1573,11 @@ export default function App() {
             }`}
           >
             <TrendingUp className="w-4 h-4 shrink-0" />
-            <span>📊 10-Year & Call Data</span>
+            <span>{t.tabAnalytics}</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('community')}
             className={`py-3 px-3 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'community'
@@ -1424,7 +1586,9 @@ export default function App() {
             }`}
           >
             <MessageSquarePlus className="w-4 h-4 shrink-0" />
-            <span>📢 Citizen Reports ({complaints.length})</span>
+            <span>
+              {t.tabCommunity} ({complaints.length})
+            </span>
           </button>
         </div>
       </div>
@@ -1436,7 +1600,7 @@ export default function App() {
           <div className="space-y-6">
             <div className="bg-white rounded-3xl shadow-md border-2 border-blue-200 p-4 md:p-6">
               <label className="block text-lg font-extrabold text-slate-800 mb-3">
-                👇 Enter Suspicious Phone Number, Link, SMS, or Upload Media:
+                {t.inputLabel}
               </label>
 
               {selectedFile && (
@@ -1459,19 +1623,12 @@ export default function App() {
                         />
                       </div>
                     )}
-                    {selectedFile.type.startsWith('video/') && (
-                      <video
-                        src={filePreview}
-                        controls
-                        className="w-32 h-20 rounded-xl bg-black object-cover"
-                      />
-                    )}
                     <div className="truncate">
                       <p className="font-bold text-sm text-slate-800 truncate">
                         {selectedFile.name}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {(selectedFile.size / 1024).toFixed(1)} KB • Ready to scan
+                        {(selectedFile.size / 1024).toFixed(1)} KB • {t.readyToScan}
                       </p>
                     </div>
                   </div>
@@ -1492,17 +1649,17 @@ export default function App() {
               {/* Quick Test Samples Bar for Live Demo */}
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mr-1">
-                  Try Sample:
+                  {t.trySample}
                 </span>
                 {QUICK_DEMO_SAMPLES.map((sample) => (
                   <button
-                    key={sample.label}
+                    key={sample.labelKey}
                     type="button"
                     disabled={loading}
                     onClick={() => handleQuickSample(sample.value)}
                     className={`text-xs font-extrabold px-3 py-1.5 rounded-xl border transition-all active:scale-95 disabled:opacity-50 ${sample.style}`}
                   >
-                    {sample.label}
+                    {t[sample.labelKey]}
                   </button>
                 ))}
               </div>
@@ -1511,7 +1668,7 @@ export default function App() {
                 rows="3"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder="Type any mobile number (e.g. 9876140321, +92..., 111-11-1111), paste a suspicious SMS/link, or upload a call recording..."
+                placeholder={t.placeholder}
                 className="w-full bg-slate-50 rounded-2xl p-4 text-base md:text-lg font-medium text-slate-900 border border-slate-200 focus:outline-none focus:border-blue-500 resize-none"
               />
 
@@ -1520,7 +1677,7 @@ export default function App() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*,audio/*,video/*,.apk"
+                    accept="image/*,audio/*,.apk"
                     onChange={handleFileChange}
                     className="hidden"
                   />
@@ -1531,7 +1688,7 @@ export default function App() {
                     className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-3 rounded-2xl flex items-center gap-2 text-sm md:text-base shadow-sm"
                   >
                     <Upload className="w-5 h-5 text-emerald-400" />
-                    <span>+ Call Audio / Photo / Video</span>
+                    <span>{t.uploadBtn}</span>
                   </button>
 
                   <button
@@ -1544,7 +1701,7 @@ export default function App() {
                     }`}
                   >
                     <Mic className="w-5 h-5 text-red-500" />
-                    <span>{isListening ? 'Listening...' : 'Speak'}</span>
+                    <span>{isListening ? t.listeningBtn : t.speakBtn}</span>
                   </button>
 
                   {(inputText || selectedFile) && (
@@ -1566,18 +1723,18 @@ export default function App() {
                   className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-400 text-white font-extrabold text-lg px-8 py-3.5 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
                 >
                   {loading ? (
-                    <span>⏳ Checking...</span>
+                    <span>{t.checkingBtn}</span>
                   ) : (
                     <>
                       <Send className="w-5 h-5" />
-                      <span>CHECK NOW</span>
+                      <span>{t.checkNowBtn}</span>
                     </>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* GIANT VISUAL VERDICT CARD */}
+            {/* GIANT VISUAL VERDICT CARD (Fully translated via <Trans>) */}
             {result && (
               <div
                 className={`rounded-3xl p-6 md:p-8 shadow-xl border-4 transition-all ${
@@ -1603,35 +1760,39 @@ export default function App() {
 
                   <div className="flex-1 space-y-2">
                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                      <span className="inline-block bg-white text-slate-950 px-3 py-1 rounded-full text-xs font-black uppercase">
+                        {t.statusLabels[result.status] || result.status}
+                      </span>
                       <span className="inline-block bg-black/25 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider">
-                        Scam Risk Score: {result.score}%
+                        {t.riskScoreLabel}: {result.score}%
                       </span>
                       {result.engine && (
                         <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-xs font-bold">
-                          ⚡ {result.engine}
+                          ⚡ <Trans text={result.engine} lang={lang} />
                         </span>
                       )}
                     </div>
 
                     <h2 className="text-2xl md:text-4xl font-black tracking-tight">
-                      {result.headline}
+                      <Trans text={result.headline} lang={lang} />
                     </h2>
                     <p className="text-lg md:text-xl font-semibold opacity-95 leading-snug">
-                      {result.simpleReason}
+                      <Trans text={result.simpleReason} lang={lang} />
                     </p>
 
                     {result.detected_indicators &&
                       result.detected_indicators.length > 0 && (
                         <div className="flex flex-wrap items-center justify-center md:justify-start gap-1.5 pt-1">
                           <span className="text-xs font-bold opacity-80">
-                            Signals:
+                            {t.signalsLabel}
                           </span>
                           {result.detected_indicators.map((ind, i) => (
                             <span
                               key={i}
                               className="text-xs bg-black/20 px-2 py-0.5 rounded-md font-bold"
                             >
-                              {result.status === 'SAFE' ? '✓' : '⚠️'} {ind}
+                              {result.status === 'SAFE' ? '✓' : '⚠️'}{' '}
+                              <Trans text={ind} lang={lang} />
                             </span>
                           ))}
                         </div>
@@ -1641,8 +1802,8 @@ export default function App() {
                       <div className="mt-2 bg-black/20 p-2.5 rounded-xl text-xs font-mono text-left max-h-24 overflow-y-auto">
                         <span className="font-bold block text-emerald-200">
                           {result.modality === 'image_ocr'
-                            ? '📷 Extracted from Photo:'
-                            : '🎙️ Transcribed from Audio:'}
+                            ? t.extractedFromPhoto
+                            : t.transcribedFromAudio}
                         </span>
                         &ldquo;{result.extracted_media_text}&rdquo;
                       </div>
@@ -1653,7 +1814,7 @@ export default function App() {
                 {result.actions && result.actions.length > 0 && (
                   <div className="mt-6 bg-black/20 rounded-2xl p-4 md:p-5">
                     <h3 className="font-extrabold text-lg mb-3 flex items-center gap-2">
-                      <span>🛡️ What You Must Do Now:</span>
+                      <span>{t.whatToDoNow}</span>
                     </h3>
                     <ul className="space-y-2.5">
                       {result.actions.map((act, idx) => (
@@ -1664,7 +1825,9 @@ export default function App() {
                           <span className="bg-white text-slate-900 w-7 h-7 rounded-full flex items-center justify-center text-sm font-black shrink-0">
                             {idx + 1}
                           </span>
-                          <span>{act}</span>
+                          <span>
+                            <Trans text={act} lang={lang} />
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -1679,11 +1842,11 @@ export default function App() {
                 <div className="flex items-center gap-2.5">
                   <PhoneOff className="w-6 h-6 text-red-600" />
                   <h3 className="text-lg font-extrabold text-slate-900">
-                    Quick Caller ID Guide: Spot International & Spam Numbers Instantly
+                    {t.callerGuideTitle}
                   </h3>
                 </div>
                 <span className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full">
-                  TRAI & Cyber Crime Alert
+                  {t.traiAlertBadge}
                 </span>
               </div>
 
@@ -1701,18 +1864,18 @@ export default function App() {
                         <span
                           className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${item.riskColor}`}
                         >
-                          {item.risk}
+                          <Trans text={item.risk} lang={lang} />
                         </span>
                       </div>
                       <div className="text-xs font-bold text-slate-500 mt-0.5">
-                        Origin: {item.country}
+                        {t.originLabel} <Trans text={item.country} lang={lang} />
                       </div>
                       <p className="text-xs font-semibold text-slate-800 mt-2">
-                        {item.scamType}
+                        <Trans text={item.scamType} lang={lang} />
                       </p>
                     </div>
                     <div className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-xl border border-blue-100">
-                      💡 {item.advice}
+                      💡 <Trans text={item.advice} lang={lang} />
                     </div>
                   </div>
                 ))}
@@ -1729,10 +1892,10 @@ export default function App() {
                 <span className="text-3xl">📢</span>
                 <div>
                   <h2 className="font-extrabold text-lg text-amber-950">
-                    Live Trending Cyber Scams (Pattern + Citizen Monitored)
+                    {t.trendingBannerTitle}
                   </h2>
                   <p className="text-sm text-amber-900 font-medium">
-                    When 3 or more citizens report the same scam category in our Community Ledger, our Pattern Monitor automatically promotes it here!
+                    {t.trendingBannerDesc}
                   </p>
                 </div>
               </div>
@@ -1742,7 +1905,7 @@ export default function App() {
                 className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shrink-0 flex items-center gap-1.5 self-start sm:self-auto"
               >
                 <PlusCircle className="w-4 h-4 text-emerald-400" />
-                <span>Report a Scam</span>
+                <span>{t.reportScamBtn}</span>
               </button>
             </div>
 
@@ -1773,10 +1936,14 @@ export default function App() {
                               : 'bg-red-600 text-white'
                           } text-xs font-black px-2.5 py-0.5 rounded-full`}
                         >
-                          {scam.badge}
+                          <Trans text={scam.badge} lang={lang} />
                         </span>
                         <h3 className="text-xl font-extrabold mt-1">
-                          {scam.title}
+                          {scam.isCommunityPromoted ? (
+                            getLocalizedCategory(scam.title)
+                          ) : (
+                            <Trans text={scam.title} lang={lang} />
+                          )}
                         </h3>
                       </div>
                     </div>
@@ -1784,7 +1951,7 @@ export default function App() {
 
                   <div className="p-5 space-y-4">
                     <p className="text-slate-700 font-semibold text-base">
-                      {scam.shortDesc}
+                      <Trans text={scam.shortDesc} lang={lang} />
                     </p>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1795,10 +1962,10 @@ export default function App() {
                         >
                           <div className="text-2xl">{step.icon}</div>
                           <div className="font-extrabold text-slate-900 text-base">
-                            {step.title}
+                            <Trans text={step.title} lang={lang} />
                           </div>
                           <div className="text-sm text-slate-600 font-medium">
-                            {step.text}
+                            <Trans text={step.text} lang={lang} />
                           </div>
                         </div>
                       ))}
@@ -1806,7 +1973,9 @@ export default function App() {
 
                     <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-3.5 flex items-center gap-3 text-emerald-950 font-extrabold text-sm md:text-base">
                       <ShieldCheck className="w-6 h-6 text-emerald-600 shrink-0" />
-                      <span>Golden Rule: {scam.rule}</span>
+                      <span>
+                        {t.goldenRule} <Trans text={scam.rule} lang={lang} />
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1821,13 +1990,13 @@ export default function App() {
             <div className="bg-white rounded-3xl p-5 md:p-6 shadow-md border border-slate-200 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
               <div>
                 <span className="bg-purple-100 text-purple-800 text-xs font-black px-3 py-1 rounded-full uppercase">
-                  10-Year Cyber Crime & Caller Trend Explorer (2017 – 2026)
+                  {t.analyticsBadge}
                 </span>
                 <h2 className="text-xl md:text-2xl font-black text-slate-900 mt-2">
-                  Year-Wise Money Lost to Spam Calls, International Callers & SMS
+                  {t.analyticsTitle}
                 </h2>
                 <p className="text-sm text-slate-600 font-medium">
-                  Click any year bar or year button below to inspect that year’s detailed numbers and scam tactics.
+                  {t.analyticsSubtitle}
                 </p>
               </div>
 
@@ -1842,7 +2011,7 @@ export default function App() {
                   }`}
                 >
                   <BarChart3 className="w-4 h-4" />
-                  <span>Year-Wise Fraud Graph</span>
+                  <span>{t.barGraphTab}</span>
                 </button>
 
                 <button
@@ -1855,7 +2024,7 @@ export default function App() {
                   }`}
                 >
                   <PhoneIncoming className="w-4 h-4" />
-                  <span>Spam & Intl Callers</span>
+                  <span>{t.callersTab}</span>
                 </button>
               </div>
             </div>
@@ -1864,41 +2033,39 @@ export default function App() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-red-600 text-white rounded-2xl p-4 shadow">
                 <div className="text-xs font-bold uppercase opacity-85">
-                  Estimated Total Lost (10 Yrs)
+                  {t.statTotalLostTitle}
                 </div>
                 <div className="text-2xl font-black mt-1">₹47,145 Cr</div>
                 <div className="text-xs mt-1 opacity-90">
-                  Across calls, SMS, UPI & investment scams
+                  {t.statTotalLostSub}
                 </div>
               </div>
 
               <div className="bg-orange-600 text-white rounded-2xl p-4 shadow">
                 <div className="text-xs font-bold uppercase opacity-85">
-                  Lost to Scam Phone Calls
+                  {t.statCallLostTitle}
                 </div>
                 <div className="text-2xl font-black mt-1">₹16,825 Cr</div>
                 <div className="text-xs mt-1 opacity-90">
-                  ₹10,160 Cr Domestic + ₹6,665 Cr Intl Callers
+                  {t.statCallLostSub}
                 </div>
               </div>
 
               <div className="bg-amber-500 text-slate-950 rounded-2xl p-4 shadow">
                 <div className="text-xs font-bold uppercase opacity-80">
-                  Fake SIMs & Numbers Blocked
+                  {t.statSimsTitle}
                 </div>
-                <div className="text-2xl font-black mt-1">10.4+ Crore</div>
-                <div className="text-xs font-bold mt-1">
-                  Disconnected via Sanchar Saathi & AI filters
-                </div>
+                <div className="text-2xl font-black mt-1">10.4+ Cr</div>
+                <div className="text-xs font-bold mt-1">{t.statSimsSub}</div>
               </div>
 
               <div className="bg-slate-900 text-white rounded-2xl p-4 shadow">
                 <div className="text-xs font-bold uppercase text-emerald-400">
-                  Intl Spoofed Calls Blocked
+                  {t.statSpoofTitle}
                 </div>
-                <div className="text-2xl font-black mt-1">1.35+ Crore/Day</div>
+                <div className="text-2xl font-black mt-1">1.35+ Cr/Day</div>
                 <div className="text-xs text-slate-300 mt-1">
-                  Foreign calls pretending to be +91 numbers
+                  {t.statSpoofSub}
                 </div>
               </div>
             </div>
@@ -1909,14 +2076,14 @@ export default function App() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h3 className="text-lg font-extrabold text-slate-900">
-                      📊 Interactive 10-Year Fraud Bar Graph (2017 – 2026)
+                      {t.barGraphHeading}
                     </h3>
                     <p className="text-xs text-slate-500 font-semibold">
-                      👆 Click any bar or year button below to see the full breakdown for that year!
+                      {t.barGraphHint}
                     </p>
                   </div>
                   <span className="bg-purple-100 text-purple-900 text-xs font-black px-3.5 py-1.5 rounded-xl border border-purple-200 self-start sm:self-auto">
-                    Viewing Year: {activeYearData.year} (₹
+                    {t.viewingYear} {activeYearData.year} (₹
                     {activeYearData.totalLostCr.toLocaleString('en-IN')} Cr)
                   </span>
                 </div>
@@ -1986,20 +2153,22 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Selected Year Deep Dive Card */}
+                {/* Selected Year Deep Dive Card (Translated dynamically) */}
                 <div className="bg-slate-900 text-white rounded-3xl p-5 md:p-6 shadow-xl border-2 border-purple-500 space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
                     <div className="flex items-center gap-3">
                       <div className="bg-purple-600 text-white font-black text-xl md:text-2xl px-4 py-2.5 rounded-2xl flex items-center gap-2 shadow">
                         <Calendar className="w-6 h-6 text-amber-300" />
-                        <span>Year {activeYearData.year}</span>
+                        <span>
+                          {t.yearLabel} {activeYearData.year}
+                        </span>
                       </div>
                       <div>
                         <div className="text-xs font-bold uppercase text-purple-300">
-                          #1 Dominant Cyber Crime in {activeYearData.year}
+                          {t.dominantCrimeIn} {activeYearData.year}
                         </div>
                         <h4 className="text-lg md:text-xl font-black text-white">
-                          {activeYearData.majorTrend}
+                          <Trans text={activeYearData.majorTrend} lang={lang} />
                         </h4>
                       </div>
                     </div>
@@ -2014,7 +2183,7 @@ export default function App() {
                         className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl border border-slate-600 flex items-center gap-1"
                       >
                         <ChevronLeft className="w-4 h-4" />
-                        <span>Prev Year</span>
+                        <span>{t.prevYear}</span>
                       </button>
                       <button
                         type="button"
@@ -2028,7 +2197,7 @@ export default function App() {
                         }
                         className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-1 shadow"
                       >
-                        <span>Next Year</span>
+                        <span>{t.nextYear}</span>
                         <ChevronRight className="w-4 h-4" />
                       </button>
                     </div>
@@ -2037,15 +2206,15 @@ export default function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5">
                       <div className="text-xs font-bold text-slate-400 uppercase">
-                        Total Money Lost in {activeYearData.year}
+                        {t.totalMoneyLostIn} {activeYearData.year}
                       </div>
                       <div className="text-2xl font-black text-red-400 mt-1">
                         ₹{activeYearData.totalLostCr.toLocaleString('en-IN')}{' '}
-                        Crores
+                        {t.crores}
                       </div>
                       {yoyGrowthPercent !== null && (
                         <div className="text-[11px] font-bold text-amber-300 mt-0.5">
-                          📈 +{yoyGrowthPercent}% increase from{' '}
+                          📈 +{yoyGrowthPercent}% {t.increaseFrom}{' '}
                           {prevYearData.year}
                         </div>
                       )}
@@ -2053,41 +2222,55 @@ export default function App() {
 
                     <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5">
                       <div className="text-xs font-bold text-slate-400 uppercase">
-                        Complaints Registered
+                        {t.complaintsRegistered}
                       </div>
                       <div className="text-2xl font-black text-white mt-1">
                         {activeYearData.casesReported}
                       </div>
                       <div className="text-[11px] font-semibold text-slate-300 mt-0.5">
-                        Reported via 1930 & Cyber Portal
+                        {t.reportedVia}
                       </div>
                     </div>
 
                     <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5">
                       <div className="text-xs font-bold text-slate-400 uppercase">
-                        Spam SIMs & Numbers Blocked
+                        {t.spamSimsBlocked}
                       </div>
                       <div className="text-2xl font-black text-emerald-400 mt-1">
-                        {activeYearData.spamNumbersBlockedLakhs}
+                        <Trans
+                          text={activeYearData.spamNumbersBlockedLakhs}
+                          lang={lang}
+                        />
                       </div>
                       <div className="text-[11px] font-semibold text-slate-300 mt-0.5">
-                        Disconnected by Telecom & DoT
+                        {t.disconnectedBy}
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-slate-800/70 border border-slate-700 rounded-2xl p-4 space-y-2 text-sm">
                     <p className="text-slate-200 leading-relaxed">
-                      <strong className="text-amber-300">What happened:</strong>{' '}
-                      {activeYearData.elaboratedStory}
+                      <strong className="text-amber-300">
+                        {t.whatHappened}
+                      </strong>{' '}
+                      <Trans
+                        text={activeYearData.elaboratedStory}
+                        lang={lang}
+                      />
                     </p>
                     <p className="text-slate-300 text-xs">
                       <strong className="text-emerald-300">
-                        Key Warning Sign:
+                        {t.keyWarningSign}
                       </strong>{' '}
-                      {activeYearData.keyWarningSign} •{' '}
-                      <strong className="text-purple-300">Primary Target:</strong>{' '}
-                      {activeYearData.topTarget}
+                      <Trans
+                        text={activeYearData.keyWarningSign}
+                        lang={lang}
+                      />{' '}
+                      •{' '}
+                      <strong className="text-purple-300">
+                        {t.primaryTarget}
+                      </strong>{' '}
+                      <Trans text={activeYearData.topTarget} lang={lang} />
                     </p>
                   </div>
                 </div>
@@ -2102,21 +2285,21 @@ export default function App() {
                     <Radio className="w-6 h-6 text-red-600 shrink-0" />
                     <div>
                       <h3 className="text-lg font-extrabold text-slate-900">
-                        📞 Interactive 10-Year Spam & International Call Graph (2017 – 2026)
+                        {t.callerGraphHeading}
                       </h3>
                       <p className="text-xs text-slate-500 font-semibold">
-                        Compare Domestic Scam Calls (Red) vs. International VoIP Callers (Orange) across years!
+                        {t.callerGraphHint}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs font-extrabold">
                     <span className="flex items-center gap-1.5 text-red-600">
                       <span className="w-3 h-3 rounded bg-red-600 inline-block" />
-                      Domestic Calls
+                      {t.domesticCallsLegend}
                     </span>
                     <span className="flex items-center gap-1.5 text-orange-500">
                       <span className="w-3 h-3 rounded bg-orange-500 inline-block" />
-                      Intl Callers
+                      {t.intlCallersLegend}
                     </span>
                   </div>
                 </div>
@@ -2193,42 +2376,53 @@ export default function App() {
                 <div className="bg-slate-900 text-white rounded-3xl p-5 md:p-6 shadow-xl border-2 border-red-500 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h4 className="text-lg font-black">
-                      Year {activeYearData.year} Telecom Scam Split (₹
-                      {totalCallLossSelectedYear.toLocaleString('en-IN')} Cr Total Call Fraud)
+                      {t.yearLabel} {activeYearData.year} {t.telecomSplitTitle} (₹
+                      {totalCallLossSelectedYear.toLocaleString('en-IN')}{' '}
+                      {t.crores} — {t.totalCallFraud})
                     </h4>
                     <span className="text-xs font-extrabold bg-red-600/30 border border-red-400/50 text-red-200 px-3 py-1 rounded-full">
-                      Spoofed Blocked: {activeYearData.spoofedCallsBlockedPerDay}
+                      {t.spoofedBlocked}{' '}
+                      <Trans
+                        text={activeYearData.spoofedCallsBlockedPerDay}
+                        lang={lang}
+                      />
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl p-3.5">
                       <div className="text-xs font-bold text-red-400 uppercase">
-                        🔴 Domestic Scam Calls ({domCallSharePct}%)
+                        {t.domesticScamCalls} ({domCallSharePct}%)
                       </div>
                       <div className="text-2xl font-black text-white mt-1">
-                        ₹{activeYearData.domesticScamCallsCr.toLocaleString('en-IN')} Cr
+                        ₹{activeYearData.domesticScamCallsCr.toLocaleString('en-IN')}{' '}
+                        {t.crores}
                       </div>
                     </div>
 
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl p-3.5">
                       <div className="text-xs font-bold text-orange-400 uppercase">
-                        🟠 International Callers ({intlCallSharePct}%)
+                        {t.intlCallersCard} ({intlCallSharePct}%)
                       </div>
                       <div className="text-2xl font-black text-white mt-1">
-                        ₹{activeYearData.intlCallerFraudCr.toLocaleString('en-IN')} Cr
+                        ₹{activeYearData.intlCallerFraudCr.toLocaleString('en-IN')}{' '}
+                        {t.crores}
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-slate-800/70 border border-slate-700 rounded-2xl p-4 space-y-1.5 text-xs md:text-sm">
                     <p className="text-slate-200">
-                      <strong className="text-orange-300">Top Foreign Prefixes:</strong>{' '}
-                      {activeYearData.topIntlOrigins}
+                      <strong className="text-orange-300">
+                        {t.topForeignPrefixes}
+                      </strong>{' '}
+                      <Trans text={activeYearData.topIntlOrigins} lang={lang} />
                     </p>
                     <p className="text-slate-300">
-                      <strong className="text-emerald-300">Caller Tactic:</strong>{' '}
-                      {activeYearData.callerTactic}
+                      <strong className="text-emerald-300">
+                        {t.callerTacticLabel}
+                      </strong>{' '}
+                      <Trans text={activeYearData.callerTactic} lang={lang} />
                     </p>
                   </div>
                 </div>
@@ -2238,17 +2432,18 @@ export default function App() {
             {/* 10-Year Category Share Breakdown */}
             <div className="bg-white rounded-3xl p-5 md:p-6 shadow-md border border-slate-200 space-y-4">
               <h3 className="text-lg font-extrabold text-slate-900">
-                📌 10-Year Cumulative Fraud Share by Channel
+                {t.cumulativeShareHeading}
               </h3>
               <div className="space-y-3">
                 {CATEGORY_BREAKDOWN.map((cat) => (
                   <div key={cat.id} className="space-y-1">
                     <div className="flex flex-wrap items-center justify-between text-xs md:text-sm font-bold text-slate-800">
                       <span>
-                        {cat.icon} {cat.label}
+                        {cat.icon} <Trans text={cat.label} lang={lang} />
                       </span>
                       <span className="text-slate-900 font-black">
-                        ₹{cat.amountCr.toLocaleString('en-IN')} Cr ({cat.percentage}%)
+                        ₹{cat.amountCr.toLocaleString('en-IN')} {t.crores} (
+                        {cat.percentage}%)
                       </span>
                     </div>
                     <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -2262,9 +2457,7 @@ export default function App() {
               </div>
               <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5 pt-1">
                 <Info className="w-4 h-4 shrink-0 text-slate-400" />
-                <span>
-                  Note: Prototype trend dataset compiled for awareness visualization based on publicly reported I4C/TRAI cybercrime growth trajectories.
-                </span>
+                <span>{t.analyticsNote}</span>
               </div>
             </div>
           </div>
@@ -2277,10 +2470,10 @@ export default function App() {
               <div className="space-y-1.5">
                 <div className="inline-flex items-center gap-2 bg-blue-600/30 border border-blue-400/40 text-blue-300 text-xs font-black px-3 py-1 rounded-full uppercase">
                   <Landmark className="w-3.5 h-3.5" />
-                  <span>Web Directory: Indian Cyber & Data Security Portals</span>
+                  <span>{t.portalsBadge}</span>
                 </div>
                 <h2 className="text-2xl md:text-3xl font-black tracking-tight">
-                  Official National Cyber Support & Reporting Portals
+                  {t.portalsHeading}
                 </h2>
               </div>
 
@@ -2290,14 +2483,14 @@ export default function App() {
                 className="bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs md:text-sm px-4 py-2.5 rounded-xl flex items-center gap-2 shrink-0 shadow"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>Back to Scam Checker</span>
+                <span>{t.backToChecker}</span>
               </button>
             </div>
 
             {/* Audience Filter Pills */}
             <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 flex flex-wrap items-center gap-2">
               <span className="text-xs font-extrabold text-slate-500 uppercase mr-1">
-                Filter by Audience:
+                {t.filterAudience}
               </span>
               {PORTAL_AUDIENCES.map((aud) => (
                 <button
@@ -2310,7 +2503,11 @@ export default function App() {
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
-                  {aud === 'ALL' ? 'All Portals' : aud}
+                  {aud === 'ALL' ? (
+                    t.allPortals
+                  ) : (
+                    <Trans text={aud} lang={lang} />
+                  )}
                 </button>
               ))}
             </div>
@@ -2320,10 +2517,14 @@ export default function App() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-900 text-white text-xs uppercase tracking-wider">
-                      <th className="py-4 px-4 font-black">Portal Name</th>
-                      <th className="py-4 px-4 font-black">Target Audience</th>
-                      <th className="py-4 px-4 font-black">When to Approach & Purpose</th>
-                      <th className="py-4 px-4 font-black text-right">Official Website</th>
+                      <th className="py-4 px-4 font-black">
+                        {t.tablePortalName}
+                      </th>
+                      <th className="py-4 px-4 font-black">{t.tableAudience}</th>
+                      <th className="py-4 px-4 font-black">{t.tablePurpose}</th>
+                      <th className="py-4 px-4 font-black text-right">
+                        {t.tableWebsite}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-sm">
@@ -2333,20 +2534,22 @@ export default function App() {
                         className="hover:bg-blue-50/50 transition-colors align-top"
                       >
                         <td className="py-4 px-4 font-extrabold text-slate-900">
-                          {portal.name}
+                          <Trans text={portal.name} lang={lang} />
                         </td>
                         <td className="py-4 px-4">
                           <span
                             className={`inline-block text-xs font-extrabold px-2.5 py-1 rounded-full border ${portal.audienceBadge}`}
                           >
-                            {portal.audience}
+                            <Trans text={portal.audience} lang={lang} />
                           </span>
                         </td>
                         <td className="py-4 px-4 text-xs text-slate-600 leading-relaxed space-y-1">
                           <p className="font-semibold text-slate-800">
-                            {portal.whenToApproach}
+                            <Trans text={portal.whenToApproach} lang={lang} />
                           </p>
-                          <p className="text-slate-500">{portal.actionEngine}</p>
+                          <p className="text-slate-500">
+                            <Trans text={portal.actionEngine} lang={lang} />
+                          </p>
                         </td>
                         <td className="py-4 px-4 text-right">
                           <a
@@ -2376,10 +2579,11 @@ export default function App() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase">
                   <Flame className="w-4 h-4" />
-                  <span>Live Citizen Incident Ledger</span>
+                  <span>{t.communityTitle}</span>
                 </div>
                 <div className="text-sm text-slate-300">
-                  Total community reports recorded: {complaints.length} • Any scammer number reported here is immediately flagged in the Scam Checker.
+                  {t.communitySubPrefix} {complaints.length}{' '}
+                  {t.communitySubSuffix}
                 </div>
               </div>
 
@@ -2389,7 +2593,7 @@ export default function App() {
                 className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm px-5 py-3 rounded-2xl shadow-lg flex items-center gap-2 shrink-0"
               >
                 <PlusCircle className="w-5 h-5" />
-                <span>+ Register New Experience</span>
+                <span>{t.registerExpBtn}</span>
               </button>
             </div>
 
@@ -2398,7 +2602,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <FolderOpen className="w-5 h-5 text-emerald-600" />
                 <span className="font-extrabold text-sm md:text-base text-slate-900">
-                  Select Year:
+                  {t.selectYear}
                 </span>
               </div>
 
@@ -2420,24 +2624,26 @@ export default function App() {
               </div>
             </div>
 
-            {/* MONTH-WISE COMPLAINTS */}
+            {/* MONTH-WISE COMPLAINTS (Every citizen story translated into active language!) */}
             <div className="space-y-6">
               {complaintsByMonthForSelectedYear.length === 0 ? (
                 <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 text-slate-500 font-semibold">
-                  No citizen reports recorded for {selectedComplaintYear} yet. Click &ldquo;+ Register New Experience&rdquo; to submit one.
+                  {t.noReportsForYear} {selectedComplaintYear}.
                 </div>
               ) : (
                 complaintsByMonthForSelectedYear.map((monthGroup) => (
                   <div
-                    key={monthGroup.monthName}
+                    key={monthGroup.monthIndex}
                     className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden"
                   >
                     <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
                       <h3 className="font-black text-base md:text-lg">
-                        {monthGroup.monthName} {selectedComplaintYear}
+                        {localizedMonths[monthGroup.monthIndex] ||
+                          ENGLISH_MONTH_NAMES[monthGroup.monthIndex]}{' '}
+                        {selectedComplaintYear}
                       </h3>
                       <span className="text-xs bg-emerald-500/20 text-emerald-300 px-3 py-0.5 rounded-full font-bold">
-                        {monthGroup.items.length} Reports
+                        {monthGroup.items.length} {t.reportsCount}
                       </span>
                     </div>
 
@@ -2450,29 +2656,33 @@ export default function App() {
                           <div className="space-y-2 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="bg-red-100 text-red-800 text-xs font-black px-2.5 py-0.5 rounded-full">
-                                {item.category}
+                                {getLocalizedCategory(item.category)}
                               </span>
                               <span className="text-xs font-bold text-slate-500">
-                                📅 {item.dateISO} • By {item.reporterName}
+                                📅 {item.dateISO} • {t.byLabel}{' '}
+                                <Trans text={item.reporterName} lang={lang} />
                               </span>
                               {Number(item.amountLost) > 0 && (
                                 <span className="bg-amber-100 text-amber-900 text-xs font-black px-2.5 py-0.5 rounded-full">
-                                  💸 Lost ₹{Number(item.amountLost).toLocaleString('en-IN')}
+                                  💸 {t.lostLabel} ₹
+                                  {Number(item.amountLost).toLocaleString(
+                                    'en-IN'
+                                  )}
                                 </span>
                               )}
                             </div>
 
                             <h4 className="text-base md:text-lg font-extrabold text-slate-900">
-                              {item.title}
+                              <Trans text={item.title} lang={lang} />
                             </h4>
 
                             <p className="text-sm text-slate-700 font-medium leading-relaxed">
-                              {item.description}
+                              <Trans text={item.description} lang={lang} />
                             </p>
 
                             {item.scammerNumber && (
                               <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-300 px-3 py-1 rounded-xl text-xs font-extrabold text-slate-800">
-                                <span>☎️ Scammer Number / ID:</span>
+                                <span>{t.scammerNumTag}</span>
                                 <span className="text-red-600">
                                   {item.scammerNumber}
                                 </span>
@@ -2497,7 +2707,7 @@ export default function App() {
                               className="bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs px-3 py-2 rounded-xl border border-blue-200 flex items-center gap-1.5"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
-                              <span>Edit</span>
+                              <span>{t.editBtn}</span>
                             </button>
                             <button
                               type="button"
@@ -2505,7 +2715,7 @@ export default function App() {
                               className="bg-red-50 hover:bg-red-100 text-red-700 font-extrabold text-xs px-3 py-2 rounded-xl border border-red-200 flex items-center gap-1.5"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
+                              <span>{t.deleteBtn}</span>
                             </button>
                           </div>
                         </div>
@@ -2529,12 +2739,13 @@ export default function App() {
           <MessageSquarePlus className="w-6 h-6 text-amber-300 shrink-0" />
           <div className="text-left">
             <div className="text-xs sm:text-sm font-black leading-none">
-              📢 Share Scam Experience
+              {t.fabShare}
             </div>
           </div>
         </button>
       </div>
 
+      {/* FLOATING HELPER AI CASE INVESTIGATOR (Entire conversation translated live!) */}
       <div className="fixed bottom-5 right-5 z-40">
         {!isChatOpen ? (
           <button
@@ -2543,7 +2754,7 @@ export default function App() {
             className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-4 sm:px-5 py-3.5 rounded-full shadow-2xl flex items-center gap-2.5 border-2 border-white transition-transform hover:scale-105"
           >
             <Bot className="w-6 h-6 text-emerald-300 shrink-0" />
-            <span className="text-xs sm:text-sm">💬 Cyber Crime Investigator</span>
+            <span className="text-xs sm:text-sm">{t.fabChat}</span>
           </button>
         ) : (
           <div className="w-[350px] sm:w-[410px] bg-white rounded-3xl shadow-2xl border-2 border-blue-600 overflow-hidden flex flex-col max-h-[560px]">
@@ -2552,9 +2763,7 @@ export default function App() {
                 <div className="bg-emerald-500 text-slate-950 p-1.5 rounded-xl">
                   <Bot className="w-5 h-5" />
                 </div>
-                <h4 className="font-extrabold text-sm">
-                  CyberKavach Case Investigator
-                </h4>
+                <h4 className="font-extrabold text-sm">{t.chatTitle}</h4>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -2590,7 +2799,7 @@ export default function App() {
                           : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-bl-none'
                       }`}
                     >
-                      {msg.text}
+                      <Trans text={msg.text} lang={lang} />
                     </div>
                   </div>
 
@@ -2605,7 +2814,7 @@ export default function App() {
                             onClick={() => handleSelectDiagnosticOption(opt)}
                             className="text-left text-xs font-extrabold bg-blue-50 hover:bg-blue-600 text-blue-800 hover:text-white px-3.5 py-2.5 rounded-xl border border-blue-200 transition-colors shadow-sm"
                           >
-                            {opt.label}
+                            <Trans text={opt.label} lang={lang} />
                           </button>
                         ))}
                       </div>
@@ -2621,7 +2830,7 @@ export default function App() {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                placeholder="Type your situation here..."
+                placeholder={t.chatPlaceholder}
                 className="flex-1 bg-slate-100 text-slate-900 text-xs sm:text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
@@ -2636,7 +2845,7 @@ export default function App() {
         )}
       </div>
 
-      {/* CITIZEN COMPLAINT REGISTRATION / EDIT MODAL */}
+      {/* CITIZEN COMPLAINT REGISTRATION / EDIT MODAL (100% Translated) */}
       {showComplaintForm && (
         <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border-2 border-emerald-500 overflow-hidden my-8">
@@ -2645,13 +2854,9 @@ export default function App() {
                 <MessageSquarePlus className="w-6 h-6 text-emerald-400" />
                 <div>
                   <h3 className="font-black text-lg leading-tight">
-                    {editingId
-                      ? 'Edit Scam Experience'
-                      : 'Register Citizen Scam Experience'}
+                    {editingId ? t.modalTitleEdit : t.modalTitleNew}
                   </h3>
-                  <p className="text-xs text-slate-300">
-                    Reported numbers immediately trigger alerts in the Scam Checker.
-                  </p>
+                  <p className="text-xs text-slate-300">{t.modalSub}</p>
                 </div>
               </div>
               <button
@@ -2673,20 +2878,20 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    Your Name & City (Optional)
+                    {t.labelNameCity}
                   </label>
                   <input
                     type="text"
                     value={formReporter}
                     onChange={(e) => setFormReporter(e.target.value)}
-                    placeholder="e.g. Ravi T. (Hyderabad)"
+                    placeholder={t.placeholderNameCity}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    Incident Date
+                    {t.labelIncidentDate}
                   </label>
                   <input
                     type="date"
@@ -2699,7 +2904,7 @@ export default function App() {
 
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                  Scam Category
+                  {t.labelScamCategory}
                 </label>
                 <select
                   value={formCategory}
@@ -2708,7 +2913,7 @@ export default function App() {
                 >
                   {COMPLAINT_CATEGORIES.map((cat) => (
                     <option key={cat.name} value={cat.name}>
-                      {cat.emoji} {cat.name}
+                      {cat.emoji} {getLocalizedCategory(cat.name)}
                     </option>
                   ))}
                 </select>
@@ -2716,28 +2921,28 @@ export default function App() {
 
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                  Short Headline *
+                  {t.labelShortHeadline}
                 </label>
                 <input
                   type="text"
                   required
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="e.g. Fake CBI video call from +855 demanding ₹50,000"
+                  placeholder={t.placeholderHeadline}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                  What Happened? (Min. 15 characters) *
+                  {t.labelWhatHappened}
                 </label>
                 <textarea
                   rows="3"
                   required
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Describe how the scammer contacted you and what red flags others should watch for..."
+                  placeholder={t.placeholderDesc}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:border-emerald-500 resize-none"
                 />
               </div>
@@ -2745,20 +2950,20 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    Scammer Phone / UPI ID
+                    {t.labelScammerNum}
                   </label>
                   <input
                     type="text"
                     value={formScammerNum}
                     onChange={(e) => setFormScammerNum(e.target.value)}
-                    placeholder="e.g. +91 9876543210 or +855..."
+                    placeholder={t.placeholderScammerNum}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    Amount Lost in ₹ (0 if avoided)
+                    {t.labelAmountLost}
                   </label>
                   <input
                     type="number"
@@ -2773,7 +2978,7 @@ export default function App() {
 
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                  Attach Proof Screenshot (Optional, max 4 MB)
+                  {t.labelAttachProof}
                 </label>
                 <input
                   ref={complaintPhotoRef}
@@ -2790,7 +2995,9 @@ export default function App() {
                   >
                     <Camera className="w-4 h-4 text-emerald-600" />
                     <span>
-                      {formPhotoData ? 'Change Screenshot' : 'Upload Screenshot'}
+                      {formPhotoData
+                        ? t.btnChangeScreenshot
+                        : t.btnUploadScreenshot}
                     </span>
                   </button>
                   {formPhotoData && (
@@ -2805,7 +3012,7 @@ export default function App() {
                         onClick={() => setFormPhotoData(null)}
                         className="text-xs font-bold text-red-600 hover:underline"
                       >
-                        Remove
+                        {t.btnRemove}
                       </button>
                     </div>
                   )}
@@ -2821,13 +3028,13 @@ export default function App() {
                   }}
                   className="px-4 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100"
                 >
-                  Cancel
+                  {t.modalCancel}
                 </button>
                 <button
                   type="submit"
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm px-6 py-2.5 rounded-xl shadow-md"
                 >
-                  {editingId ? 'Save Changes' : 'Submit Report'}
+                  {editingId ? t.modalSubmitEdit : t.modalSubmitNew}
                 </button>
               </div>
             </form>
